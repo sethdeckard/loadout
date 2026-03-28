@@ -6,7 +6,7 @@ Skill Manager for Claude and Codex. Manages machine-local installation of skills
 
 ## Why Loadout?
 
-Claude and Codex store skills as local files, but there is no built-in way to sync, version, or share them across machines. If you work from more than one computer, collaborate with a team, or just want your skills under version control, you need something to bridge that gap. Loadout uses a private git repo as the single source of truth for your skills and handles installation and sync on each machine.
+Claude and Codex support local and project-scoped skills, but they do not provide a single built-in workflow for keeping your personal skill library versioned and synchronized across machines. Loadout uses a git repo as the single source of truth for your skills and handles installation and sync on each machine.
 
 ## Install
 
@@ -60,7 +60,7 @@ loadout doctor
 
 ## How It Works
 
-1. A private git repo holds skill definitions (content only)
+1. A git repo holds skill definitions (content only)
 2. Each machine keeps its own state about which skills are enabled
 3. Install/remove means copy/delete into target tool directories
 
@@ -209,7 +209,7 @@ Loadout will overwrite it on the next sync or re-equip. The repo copy is the sou
 Use project scope (`tab` in the TUI or `--project` on CLI). Skills installed in project scope go into `<project>/.claude/skills/` and `<project>/.codex/skills/`, which you can commit to the project repo.
 
 **Does Loadout modify my skills repo?**
-Only through explicit actions: import (with `--commit`), delete (with `--commit`), and sync push. It never writes machine state to the repo.
+Only through explicit actions: init scaffolding, import (with `--commit`), delete (with `--commit`), and sync push. It never writes machine state to the repo.
 
 **What is the `.loadout` file in installed skills?**
 A JSON marker that tracks which repo commit the install came from. It lets Loadout distinguish managed installs from manually placed skill directories and detect when a managed install needs refreshing.

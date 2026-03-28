@@ -1,0 +1,25 @@
+# Binary
+/loadout
+
+# Test/coverage
+coverage.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Go
+vendor/
+.gocache/
+/.cache/
+
+# Build artifacts
+/.tmp/
+
+# Local assistant state
+.claude/
+.codex/

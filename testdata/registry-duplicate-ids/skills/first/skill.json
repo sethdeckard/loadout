@@ -1,0 +1,8 @@
+{
+  "name": "dupe-skill",
+  "description": "First instance",
+  "tags": [],
+  "targets": [
+    "claude"
+  ]
+}

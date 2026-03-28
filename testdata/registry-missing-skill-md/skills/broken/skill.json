@@ -1,0 +1,8 @@
+{
+  "name": "broken",
+  "description": "Missing SKILL.md",
+  "tags": [],
+  "targets": [
+    "claude"
+  ]
+}

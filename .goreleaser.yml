@@ -1,0 +1,36 @@
+version: 2
+
+builds:
+  - main: ./cmd/loadout
+    binary: loadout
+    ldflags:
+      - -X github.com/sethdeckard/loadout/cmd/loadout/cmd.version={{.Version}}
+      - -X github.com/sethdeckard/loadout/cmd/loadout/cmd.commit={{.ShortCommit}}
+      - -X github.com/sethdeckard/loadout/cmd/loadout/cmd.date={{.Date}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+brews:
+  - repository:
+      owner: sethdeckard
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/sethdeckard/loadout
+    description: Skill manager for Claude and Codex
+    license: MIT
+    install: |
+      bin.install "loadout"
+
+changelog:
+  use: github-native

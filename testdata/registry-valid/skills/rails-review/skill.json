@@ -1,0 +1,15 @@
+{
+  "name": "rails-review",
+  "description": "Code review guidance for Rails applications.",
+  "tags": [
+    "ruby",
+    "rails",
+    "review"
+  ],
+  "targets": [
+    "claude"
+  ],
+  "claude": {
+    "allowed-tools": "Read, Grep, Bash"
+  }
+}

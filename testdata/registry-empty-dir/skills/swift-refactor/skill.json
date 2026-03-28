@@ -1,0 +1,18 @@
+{
+  "name": "swift-refactor",
+  "description": "Guidance and helpers for Swift refactoring tasks.",
+  "tags": [
+    "swift",
+    "ios",
+    "refactor"
+  ],
+  "targets": [
+    "claude",
+    "codex"
+  ],
+  "claude": {
+    "allowed-tools": "Read, Grep",
+    "disable-model-invocation": true
+  },
+  "codex": {}
+}

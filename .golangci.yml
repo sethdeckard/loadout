@@ -1,0 +1,14 @@
+linters:
+  enable:
+    - gocritic
+    - goimports
+    - misspell
+    - unconvert
+    - unparam
+    - errname
+    - errorlint
+    - nolintlint
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/seth/loadout

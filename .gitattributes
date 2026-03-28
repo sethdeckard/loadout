@@ -1,0 +1,22 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Go
+*.go text diff=golang
+go.mod text diff=golang
+go.sum text linguist-generated
+
+# Data/config
+*.json text
+*.yml text
+*.yaml text
+*.toml text
+
+# Documentation
+*.md text diff=markdown
+
+# Build
+Makefile text
+
+# Binary — prevent accidental commits from being mangled
+loadout binary

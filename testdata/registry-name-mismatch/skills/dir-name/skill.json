@@ -1,0 +1,6 @@
+{
+  "name": "declared-name",
+  "description": "Skill with a declared name that differs from its directory name.",
+  "tags": ["test"],
+  "targets": ["claude"]
+}

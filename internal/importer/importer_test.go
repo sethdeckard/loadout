@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -380,6 +381,42 @@ func TestDiscoverCandidates_IncludesOrphans(t *testing.T) {
 	}
 }
 
+func TestDiscoverCandidates_SymlinkNotReady(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior differs on Windows")
+	}
+
+	root := t.TempDir()
+	claudeDir := filepath.Join(root, "claude")
+
+	// Create a skill with a symlinked file
+	skillDir := filepath.Join(claudeDir, "symlink-skill")
+	writeSkillSource(t, skillDir, "# Symlink\n", `{"name":"symlink-skill","targets":["claude"]}`)
+	target := filepath.Join(root, "external.txt")
+	if err := os.WriteFile(target, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(skillDir, "link.txt")); err != nil {
+		t.Fatalf("setup symlink: %v", err)
+	}
+
+	candidates, err := DiscoverCandidates(config.TargetPaths{
+		Claude: config.TargetConfig{Enabled: true, Path: claudeDir},
+	})
+	if err != nil {
+		t.Fatalf("DiscoverCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("len(candidates) = %d, want 1", len(candidates))
+	}
+	if candidates[0].Ready {
+		t.Error("expected Ready = false for candidate with symlink")
+	}
+	if candidates[0].Problem == "" {
+		t.Error("expected non-empty Problem for candidate with symlink")
+	}
+}
+
 func TestDiscoverCandidates_OrphanFlagNotSetForUnmanaged(t *testing.T) {
 	root := t.TempDir()
 	claudeDir := filepath.Join(root, "claude")
@@ -433,6 +470,32 @@ func TestDiscoverCandidates_ConflictingOrphans(t *testing.T) {
 	}
 	if !strings.Contains(c.Problem, "conflicting") {
 		t.Errorf("Problem = %q, want conflicting reason", c.Problem)
+	}
+}
+
+func TestPreviewSourceDir_RejectsSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior differs on Windows")
+	}
+
+	source := filepath.Join(t.TempDir(), "my-skill")
+	writeSkillSource(t, source, "# Skill\n", `{"name":"my-skill","targets":["claude"]}`)
+
+	// Add a symlinked file
+	target := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(target, []byte("sensitive"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(source, "link.txt")); err != nil {
+		t.Fatalf("setup symlink: %v", err)
+	}
+
+	_, err := PreviewSourceDir(source, []domain.Target{domain.TargetClaude})
+	if err == nil {
+		t.Fatal("expected error for symlink in source directory")
+	}
+	if !errors.Is(err, domain.ErrSymlinkInTree) {
+		t.Errorf("error = %v, want ErrSymlinkInTree", err)
 	}
 }
 

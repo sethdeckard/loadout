@@ -12,4 +12,6 @@ var (
 	ErrTargetDisabled    = errors.New("target disabled")
 	ErrRepoNotFound      = errors.New("repo not found")
 	ErrConfigNotFound    = errors.New("config not found")
+	ErrUnmanagedDir      = errors.New("directory exists but is not managed by loadout")
+	ErrSymlinkInTree     = errors.New("symlink encountered in directory tree")
 )

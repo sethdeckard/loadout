@@ -383,6 +383,87 @@ func TestInstall_PreservesExtraFiles(t *testing.T) {
 	}
 }
 
+func TestInstall_RejectsUnmanagedDir(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	// Create an existing directory WITHOUT a .loadout marker
+	unmanaged := filepath.Join(targetRoot, "test-skill")
+	if err := os.MkdirAll(unmanaged, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(unmanaged, "user-data.txt"), []byte("important"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	err := Install(repo, testSkill(), domain.TargetClaude, targetRoot, "abc123")
+	if !errors.Is(err, domain.ErrUnmanagedDir) {
+		t.Fatalf("Install() error = %v, want ErrUnmanagedDir", err)
+	}
+
+	// Verify the directory was NOT deleted
+	data, err := os.ReadFile(filepath.Join(unmanaged, "user-data.txt"))
+	if err != nil {
+		t.Fatal("unmanaged directory contents should be preserved")
+	}
+	if string(data) != "important" {
+		t.Errorf("file content = %q, want %q", data, "important")
+	}
+}
+
+func TestRemove_RejectsUnmanagedDir(t *testing.T) {
+	targetRoot := t.TempDir()
+
+	// Create directory without marker
+	unmanaged := filepath.Join(targetRoot, "test-skill")
+	if err := os.MkdirAll(unmanaged, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(unmanaged, "important.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	err := Remove("test-skill", targetRoot)
+	if !errors.Is(err, domain.ErrUnmanagedDir) {
+		t.Fatalf("Remove() error = %v, want ErrUnmanagedDir", err)
+	}
+
+	// Directory must still exist
+	if _, err := os.Stat(filepath.Join(unmanaged, "important.txt")); err != nil {
+		t.Error("unmanaged directory contents should be preserved")
+	}
+}
+
+func TestInstall_MarkerIsAtomicWithRename(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	// First install — marker should arrive atomically with content
+	if err := Install(repo, testSkill(), domain.TargetClaude, targetRoot, "abc123"); err != nil {
+		t.Fatalf("first Install() error = %v", err)
+	}
+	if !HasMarker("test-skill", targetRoot) {
+		t.Fatal("marker must exist after install")
+	}
+
+	// Simulate the old bug: delete marker as if the post-rename write had failed
+	markerPath := filepath.Join(targetRoot, "test-skill", ".loadout")
+	if err := os.Remove(markerPath); err != nil {
+		t.Fatalf("remove marker: %v", err)
+	}
+
+	// Reinstall must now fail — the directory exists without a marker
+	err := Install(repo, testSkill(), domain.TargetClaude, targetRoot, "def456")
+	if !errors.Is(err, domain.ErrUnmanagedDir) {
+		t.Fatalf("Install() over markerless dir: error = %v, want ErrUnmanagedDir", err)
+	}
+
+	// Content from the first install must still be intact
+	if _, err := os.Stat(filepath.Join(targetRoot, "test-skill", "SKILL.md")); err != nil {
+		t.Error("existing content should be preserved when marker is missing")
+	}
+}
+
 func TestScanManaged_EmptyDir(t *testing.T) {
 	ids := ScanManaged(t.TempDir())
 	if len(ids) != 0 {

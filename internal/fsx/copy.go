@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/sethdeckard/loadout/internal/domain"
 )
 
 // CopyDir recursively copies src directory to dst.
@@ -33,6 +35,10 @@ func CopyDir(src, dst string) error {
 			return err
 		}
 		target := filepath.Join(dst, rel)
+
+		if d.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("copy dir: %w: %s", domain.ErrSymlinkInTree, path)
+		}
 
 		if d.IsDir() {
 			info, err := d.Info()

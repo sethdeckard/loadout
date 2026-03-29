@@ -193,6 +193,9 @@ func listExtraFiles(dir string) []string {
 		if err != nil || d.IsDir() {
 			return nil
 		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
 		rel, _ := filepath.Rel(dir, path)
 		if !skip[rel] {
 			files = append(files, rel)

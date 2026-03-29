@@ -55,19 +55,7 @@ func Install(repoPath string, skill domain.Skill, target domain.Target, targetRo
 		return fmt.Errorf("transform SKILL.md: %w", err)
 	}
 
-	// Remove existing install if present
-	if fsx.DirExists(finalDir) {
-		if err := os.RemoveAll(finalDir); err != nil {
-			return fmt.Errorf("remove existing: %w", err)
-		}
-	}
-
-	// Atomic rename into place
-	if err := os.Rename(stagingDir, finalDir); err != nil {
-		return fmt.Errorf("rename into place: %w", err)
-	}
-
-	// Write .loadout marker
+	// Write .loadout marker into staging dir before rename so the operation is atomic
 	marker := Marker{
 		RepoCommit:  commit,
 		InstalledAt: time.Now().UTC().Truncate(time.Second),
@@ -76,8 +64,23 @@ func Install(repoPath string, skill domain.Skill, target domain.Target, targetRo
 	if err != nil {
 		return fmt.Errorf("marshal marker: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(finalDir, fsx.MarkerFile), data, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(stagingDir, fsx.MarkerFile), data, 0o644); err != nil {
 		return fmt.Errorf("write marker: %w", err)
+	}
+
+	// Remove existing install if present — refuse to overwrite unmanaged directories
+	if fsx.DirExists(finalDir) {
+		if !HasMarker(skill.Name, targetRoot) {
+			return fmt.Errorf("%w: %s", domain.ErrUnmanagedDir, finalDir)
+		}
+		if err := os.RemoveAll(finalDir); err != nil {
+			return fmt.Errorf("remove existing: %w", err)
+		}
+	}
+
+	// Atomic rename into place
+	if err := os.Rename(stagingDir, finalDir); err != nil {
+		return fmt.Errorf("rename into place: %w", err)
 	}
 
 	return nil
@@ -89,6 +92,9 @@ func Remove(skillName domain.SkillName, targetRoot string) error {
 	dir := filepath.Join(targetRoot, string(skillName))
 	if !fsx.DirExists(dir) {
 		return nil
+	}
+	if !HasMarker(skillName, targetRoot) {
+		return fmt.Errorf("%w: %s", domain.ErrUnmanagedDir, dir)
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("remove skill %q: %w", skillName, err)

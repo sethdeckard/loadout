@@ -2,10 +2,13 @@ package fsx
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/sethdeckard/loadout/internal/domain"
 )
 
 func mustSetup(t *testing.T, fn func() error) {
@@ -122,6 +125,62 @@ func TestEnsureDir(t *testing.T) {
 	}
 	if !DirExists(path) {
 		t.Error("EnsureDir did not create directory")
+	}
+}
+
+func TestCopyDir_RejectsSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior differs on Windows")
+	}
+
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, src string)
+	}{
+		{
+			name: "symlink to file",
+			setup: func(t *testing.T, src string) {
+				t.Helper()
+				real := filepath.Join(src, "real.txt")
+				mustSetup(t, func() error { return os.WriteFile(real, []byte("content"), 0o644) })
+				mustSetup(t, func() error { return os.Symlink(real, filepath.Join(src, "link.txt")) })
+			},
+		},
+		{
+			name: "symlink to directory",
+			setup: func(t *testing.T, src string) {
+				t.Helper()
+				sub := filepath.Join(src, "sub")
+				mustSetup(t, func() error { return os.MkdirAll(sub, 0o755) })
+				mustSetup(t, func() error { return os.Symlink(sub, filepath.Join(src, "link-dir")) })
+			},
+		},
+		{
+			name: "symlink in nested directory",
+			setup: func(t *testing.T, src string) {
+				t.Helper()
+				nested := filepath.Join(src, "a", "b")
+				mustSetup(t, func() error { return os.MkdirAll(nested, 0o755) })
+				target := filepath.Join(src, "a", "real.txt")
+				mustSetup(t, func() error { return os.WriteFile(target, []byte("x"), 0o644) })
+				mustSetup(t, func() error { return os.Symlink(target, filepath.Join(nested, "link.txt")) })
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := t.TempDir()
+			tt.setup(t, src)
+			dst := filepath.Join(t.TempDir(), "dest")
+			err := CopyDir(src, dst)
+			if err == nil {
+				t.Fatal("expected error for symlink in source tree")
+			}
+			if !errors.Is(err, domain.ErrSymlinkInTree) {
+				t.Errorf("error = %v, want ErrSymlinkInTree", err)
+			}
+		})
 	}
 }
 

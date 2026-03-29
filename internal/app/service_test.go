@@ -788,6 +788,29 @@ func TestToggleSkillTarget_UnsupportedTarget(t *testing.T) {
 	}
 }
 
+func TestToggleSkillTarget_RejectsUnmanagedDir(t *testing.T) {
+	svc, claudeDir := setupTestEnv(t)
+
+	// Pre-create an unmanaged directory with the same skill name
+	unmanaged := filepath.Join(claudeDir, "test-skill")
+	if err := os.MkdirAll(unmanaged, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(unmanaged, "user-data.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	err := svc.ToggleSkillTarget("test-skill", domain.TargetClaude)
+	if !errors.Is(err, domain.ErrUnmanagedDir) {
+		t.Fatalf("ToggleSkillTarget() error = %v, want ErrUnmanagedDir", err)
+	}
+
+	// Verify unmanaged directory was preserved
+	if _, err := os.Stat(filepath.Join(unmanaged, "user-data.txt")); err != nil {
+		t.Error("unmanaged directory contents should be preserved")
+	}
+}
+
 func TestDisableSkillTarget_NotInstalled(t *testing.T) {
 	svc, _ := setupTestEnv(t)
 	err := svc.DisableSkillTarget("test-skill", domain.TargetClaude)

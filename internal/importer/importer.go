@@ -57,7 +57,8 @@ type preparedImport struct {
 	sourceTarget *domain.Target
 	sourceDir    string
 	existingJSON bool
-	managed      bool // source directory has a .loadout marker
+	managed      bool  // source directory has a .loadout marker
+	prepareErr   error // non-nil if prepareImport failed for this entry
 }
 
 func Import(params ImportParams) (ImportResult, error) {
@@ -203,6 +204,7 @@ func scanRoot(root string, target domain.Target) (map[domain.SkillName][]prepare
 				sourceTarget: &target,
 				normalized:   []byte(err.Error()),
 				managed:      hasMarker(dir),
+				prepareErr:   err,
 			})
 			continue
 		}
@@ -238,6 +240,7 @@ func scanRootMultiTarget(root string, targets []domain.Target) (map[domain.Skill
 				sourceDir:  dir,
 				normalized: []byte(err.Error()),
 				managed:    hasMarker(dir),
+				prepareErr: err,
 			})
 			continue
 		}
@@ -282,7 +285,15 @@ func mergeCandidates(byName map[domain.SkillName][]preparedImport, allowTargetMe
 			}
 		}
 
-		if len(entries) > 1 {
+		for _, entry := range entries {
+			if entry.prepareErr != nil {
+				candidate.Ready = false
+				candidate.Problem = entry.prepareErr.Error()
+				break
+			}
+		}
+
+		if candidate.Ready && len(entries) > 1 {
 			for i := 1; i < len(entries); i++ {
 				if !preparedEqual(entries[0], entries[i], allowTargetMetadataDiff) {
 					candidate.Ready = false
@@ -358,7 +369,23 @@ func hasMarker(dir string) bool {
 	return err == nil
 }
 
+func rejectSymlinks(dir string) error {
+	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%w: %s", domain.ErrSymlinkInTree, path)
+		}
+		return nil
+	})
+}
+
 func prepareImport(sourceDir string, targets []domain.Target) (preparedImport, error) {
+	if err := rejectSymlinks(sourceDir); err != nil {
+		return preparedImport{}, err
+	}
+
 	mdPath := filepath.Join(sourceDir, "SKILL.md")
 	mdBytes, err := os.ReadFile(mdPath)
 	if err != nil {
@@ -456,6 +483,9 @@ func snapshotNormalized(sourceDir, markdown string, skillJSON []byte) ([]byte, e
 	err := filepath.WalkDir(sourceDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("snapshot: %w: %s", domain.ErrSymlinkInTree, path)
 		}
 		if d.IsDir() {
 			return nil

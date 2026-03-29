@@ -68,6 +68,12 @@ var (
 	statusInfoStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("81"))
 
+	infoBannerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color("24")).
+			Padding(0, 1)
+
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196"))
 

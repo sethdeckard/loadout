@@ -472,6 +472,10 @@ func (m Model) renderDetails(width, height int) string {
 		b.WriteString(dimStyle.Render("Select a skill to view details"))
 		return clipWrappedContent(b.String(), width, height)
 	}
+	if m.selectedSkillIsUnmanaged() {
+		b.WriteString(infoBannerStyle.Render("`i` to import this unmanaged skill"))
+		b.WriteString("\n\n")
+	}
 
 	s := sel.Skill
 	b.WriteString(labelStyle.Render("Name:        ") + valueStyle.Render(string(s.Name)) + "\n")

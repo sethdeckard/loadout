@@ -1985,6 +1985,20 @@ func TestRenderDetails_OmitsPath(t *testing.T) {
 	}
 }
 
+func TestRenderDetails_UnmanagedShowsImportBanner(t *testing.T) {
+	m := testModel()
+	m.skills[0].Flags = []reconcile.StatusFlag{reconcile.StatusUnmanaged}
+	m.applyFilter()
+
+	output := m.renderDetails(60, 20)
+	if !strings.Contains(output, "`i` to import this unmanaged skill") {
+		t.Fatalf("details should show unmanaged import banner:\n%s", output)
+	}
+	if !strings.Contains(output, "Name:") {
+		t.Fatalf("details should still show metadata below banner:\n%s", output)
+	}
+}
+
 func TestModel_ProjectModeView(t *testing.T) {
 	m := testModel()
 	m.detectedProject = testProject

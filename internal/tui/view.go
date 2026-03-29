@@ -426,7 +426,7 @@ func checkboxFor(v app.SkillView) string {
 		if !v.InstalledClaude && !v.InstalledCodex {
 			return statusInfoStyle.Render("[ ]")
 		}
-		return statusInfoStyle.Render("[g]")
+		return statusInfoStyle.Render("[u]")
 	}
 	if v.ProjectClaude || v.ProjectCodex {
 		if v.InstalledClaude || v.InstalledCodex {
@@ -435,7 +435,7 @@ func checkboxFor(v app.SkillView) string {
 		return enabledStyle.Render("[x]")
 	}
 	if v.InstalledClaude || v.InstalledCodex {
-		return statusWarnStyle.Render("[g]")
+		return statusWarnStyle.Render("[u]")
 	}
 	return disabledStyle.Render("[ ]")
 }
@@ -1492,7 +1492,7 @@ func (m Model) renderTargetRows(rows []targetRow) string {
 		if row.installed {
 			check = enabledStyle.Render("[x]")
 		} else if row.project && row.user {
-			check = statusWarnStyle.Render("[g]")
+			check = statusWarnStyle.Render("[u]")
 		}
 
 		actionHint := row.key + " " + compactTargetAction(row)

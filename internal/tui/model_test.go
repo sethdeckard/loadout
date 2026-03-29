@@ -1163,7 +1163,7 @@ func TestCheckboxFor_ProjectUnmanagedUsesInfoColor(t *testing.T) {
 		Flags:           []reconcile.StatusFlag{reconcile.StatusUnmanaged},
 	}
 
-	if got, want := checkboxFor(v), statusInfoStyle.Render("[g]"); got != want {
+	if got, want := checkboxFor(v), statusInfoStyle.Render("[u]"); got != want {
 		t.Fatalf("checkbox = %q, want %q", got, want)
 	}
 }
@@ -2423,7 +2423,7 @@ func TestRenderStatus_ProjectModeShowsCompactUserNote(t *testing.T) {
 	m.applyFilter()
 
 	status := m.renderStatus(40, 20)
-	if !strings.Contains(status, "[g]") {
+	if !strings.Contains(status, "[u]") {
 		t.Fatalf("status panel should show bracketed user marker:\n%s", status)
 	}
 	if !strings.Contains(status, "c equip project") {

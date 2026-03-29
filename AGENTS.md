@@ -44,7 +44,7 @@ internal/gitrepo/       Git operations: IsRepo, Init, Clone, Pull, Push, HeadCom
 internal/install/       Install/Remove skills to/from target directories
 internal/importer/      Import local skills into the shared repo
 internal/skillmd/       Parse YAML frontmatter and headings from SKILL.md files
-internal/scope/         Resolve global vs project-local install roots
+internal/scope/         Resolve user vs project-local install roots
 internal/reconcile/     Compute per-skill inventory status from repo + filesystem
 internal/app/           Service layer orchestrating all packages
 internal/tui/           Bubble Tea TUI (presentation only, no business logic)

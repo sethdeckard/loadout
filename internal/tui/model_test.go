@@ -2147,6 +2147,16 @@ func TestRenderScopeInfoPanel_UserUtilities_ShowImportSyncDoctor(t *testing.T) {
 	}
 }
 
+func TestRenderScopeInfoPanel_UserModeHighlightsImportWhenCandidatesExist(t *testing.T) {
+	m := testModel()
+	m.userHintCount = 1
+
+	scope := m.renderScopeInfoPanel(40, 10)
+	if !strings.Contains(scope, footerKeyStyle.Render("i")+" "+statusInfoStyle.Render("import")) {
+		t.Fatalf("user utilities should highlight import when candidates exist:\n%s", scope)
+	}
+}
+
 func TestModel_ProjectModeView_HidesImportHintWithoutReadySkills(t *testing.T) {
 	m := testModel()
 	m.detectedProject = testProject

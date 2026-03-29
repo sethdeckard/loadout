@@ -84,6 +84,7 @@ type Model struct {
 	detectedProject  string // project root detected at startup (for toggle)
 	projectRoot      string // empty = user mode, non-empty = project mode
 	projectHintCount int
+	userHintCount    int
 	syncAttention    bool
 
 	// UI state
@@ -143,6 +144,8 @@ func (m Model) Init() tea.Cmd {
 	}
 	if m.projectRoot != "" {
 		cmds = append(cmds, projectImportHintCmd(m.svc, m.projectRoot))
+	} else {
+		cmds = append(cmds, userImportHintCmd(m.svc))
 	}
 	return tea.Batch(cmds...)
 }
@@ -571,6 +574,8 @@ func (m *Model) refreshAndLoad() tea.Cmd {
 	if m.inProjectMode() {
 		cmds[0] = loadSkillsCmd(m.svc, m.projectRoot)
 		cmds = append(cmds, projectImportHintCmd(m.svc, m.projectRoot))
+	} else {
+		cmds = append(cmds, userImportHintCmd(m.svc))
 	}
 	if sel := m.selectedSkill(); sel != nil {
 		cmds = append(cmds, m.previewCmdForSkill(sel))

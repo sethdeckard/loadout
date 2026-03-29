@@ -57,6 +57,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.inProjectMode() {
 			cmds = append(cmds, projectImportHintCmd(m.svc, m.projectRoot))
+		} else {
+			cmds = append(cmds, userImportHintCmd(m.svc))
 		}
 		if len(cmds) == 0 {
 			return m, nil
@@ -66,6 +68,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projectImportHintMsg:
 		if msg.err == nil {
 			m.projectHintCount = msg.readyCount
+		}
+		return m, nil
+
+	case userImportHintMsg:
+		if msg.err == nil {
+			m.userHintCount = msg.readyCount
 		}
 		return m, nil
 
@@ -553,6 +561,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Switch to project
 		m.projectRoot = m.detectedProject
+		m.userHintCount = 0
 		m.doctor = nil
 		m.preview = nil
 		m.detailScroll = 0

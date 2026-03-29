@@ -633,7 +633,7 @@ func (m Model) renderScopeInfoPanel(width, height int) string {
 	b.WriteString("\n\n")
 
 	importLabel := dimStyle.Render("import")
-	if m.projectHintCount > 0 {
+	if (m.inProjectMode() && m.projectHintCount > 0) || (!m.inProjectMode() && m.userHintCount > 0) {
 		importLabel = statusInfoStyle.Render("import")
 	}
 	syncLabel := dimStyle.Render("sync repo")

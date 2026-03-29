@@ -255,6 +255,11 @@ type projectImportHintMsg struct {
 	err        error
 }
 
+type userImportHintMsg struct {
+	readyCount int
+	err        error
+}
+
 type loadBrowseDirMsg struct {
 	dir     string
 	entries []string
@@ -321,5 +326,21 @@ func projectImportHintCmd(svc *app.Service, projectRoot string) tea.Cmd {
 			}
 		}
 		return projectImportHintMsg{readyCount: readyCount}
+	}
+}
+
+func userImportHintCmd(svc *app.Service) tea.Cmd {
+	return func() tea.Msg {
+		views, err := svc.ListImportCandidates()
+		if err != nil {
+			return userImportHintMsg{err: err}
+		}
+		readyCount := 0
+		for _, view := range views {
+			if view.Ready {
+				readyCount++
+			}
+		}
+		return userImportHintMsg{readyCount: readyCount}
 	}
 }

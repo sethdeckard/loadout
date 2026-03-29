@@ -566,6 +566,39 @@ func TestModel_UserDeleteUsesUppercaseD(t *testing.T) {
 	}
 }
 
+func TestModel_UnmanagedSelectionBlocksRepoActions(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		key  tea.KeyMsg
+	}{
+		{"claude", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")}},
+		{"codex", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}},
+		{"all", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}},
+		{"delete", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := testModel()
+			m.skills[0].InstalledClaude = true
+			m.skills[0].Flags = []reconcile.StatusFlag{reconcile.StatusUnmanaged}
+			m.skills[0].Skill.Targets = nil
+			m.applyFilter()
+
+			m2, cmd := m.Update(tt.key)
+			model := m2.(Model)
+
+			if cmd != nil {
+				t.Fatal("expected no command for unmanaged selection")
+			}
+			if got, want := model.status, "swift-refactor is not in repo; press i to import it"; got != want {
+				t.Fatalf("status = %q, want %q", got, want)
+			}
+			if model.deleteConfirming() {
+				t.Fatal("expected delete flow to remain inactive")
+			}
+		})
+	}
+}
+
 func TestModel_ProjectDeleteUsesUppercaseD(t *testing.T) {
 	m := testModel()
 	m.detectedProject = testProject

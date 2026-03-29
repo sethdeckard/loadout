@@ -430,18 +430,27 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyClaude:
+		if m.blockUnmanagedSelectionAction() {
+			return m, nil
+		}
 		if m.inProjectMode() {
 			return m, m.projectToggle(domain.TargetClaude)
 		}
 		return m, m.toggleTarget(domain.TargetClaude)
 
 	case keyCodex:
+		if m.blockUnmanagedSelectionAction() {
+			return m, nil
+		}
 		if m.inProjectMode() {
 			return m, m.projectToggle(domain.TargetCodex)
 		}
 		return m, m.toggleTarget(domain.TargetCodex)
 
 	case keyAll:
+		if m.blockUnmanagedSelectionAction() {
+			return m, nil
+		}
 		if m.inProjectMode() {
 			sel := m.selectedSkill()
 			if sel == nil {

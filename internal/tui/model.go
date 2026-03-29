@@ -10,6 +10,7 @@ import (
 	"github.com/sethdeckard/loadout/internal/config"
 	"github.com/sethdeckard/loadout/internal/domain"
 	"github.com/sethdeckard/loadout/internal/fsx"
+	"github.com/sethdeckard/loadout/internal/reconcile"
 )
 
 type paneID int
@@ -163,6 +164,31 @@ func (m Model) selectedSkill() *app.SkillView {
 		return nil
 	}
 	return &m.filtered[m.cursor]
+}
+
+func (m Model) selectedSkillIsUnmanaged() bool {
+	sel := m.selectedSkill()
+	if sel == nil {
+		return false
+	}
+	for _, flag := range sel.Flags {
+		if flag == reconcile.StatusUnmanaged {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) blockUnmanagedSelectionAction() bool {
+	sel := m.selectedSkill()
+	if sel == nil {
+		return false
+	}
+	if !m.selectedSkillIsUnmanaged() {
+		return false
+	}
+	m.status = string(sel.Skill.Name) + " is not in repo; press i to import it"
+	return true
 }
 
 func (m Model) selectedImportCandidate() *app.ImportCandidateView {
@@ -490,6 +516,10 @@ func (m *Model) beginCommitPrompt(actionKind string, skillName domain.SkillName,
 func (m *Model) beginDeleteForSelection() tea.Cmd {
 	sel := m.selectedSkill()
 	if sel == nil {
+		return nil
+	}
+	if m.selectedSkillIsUnmanaged() {
+		m.status = string(sel.Skill.Name) + " is not in repo; press i to import it"
 		return nil
 	}
 	m.status = "checking delete eligibility for " + string(sel.Skill.Name) + "..."

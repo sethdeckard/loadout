@@ -13,6 +13,7 @@ Improved TUI workflows for unmanaged skills, navigation, and first-run guidance.
 - Added vim-style half-page navigation with `ctrl+u` and `ctrl+d` across inventory, import, settings, and help views
 - Improved long-list browsing and action highlighting in inventory and import views
 - Added workflow-oriented guides for importing skills and authoring new skills with `loadout-smith`
+- Increase operational safety with unmanaged directories and symlink dereferencing.
 
 ## [0.1.0] - 2026-03-28
 

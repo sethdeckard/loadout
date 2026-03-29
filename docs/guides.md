@@ -24,6 +24,8 @@ After import, the repo copy becomes the source of truth. Edit the skill there, n
 
 This is the best path when you are migrating an existing local skill collection.
 
+In project scope, ready project-local skills may already appear in the main inventory as `not in repo` rows before you open the import screen.
+
 ### Single skill path: CLI import
 
 ```bash

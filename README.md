@@ -78,6 +78,8 @@ The TUI is the primary way to use Loadout. It gives you a live view of your skil
 
 Run `loadout` with no arguments to launch it. When a compatible project is detected the TUI starts in project scope; use `loadout --user` to start in user scope instead.
 
+When the inventory is truly empty, the details pane shows a first-run empty-state with guidance and a link to the workflow guides.
+
 ```
 j/k         Navigate skills
 /           Filter
@@ -99,13 +101,15 @@ When a compatible repo is detected, `tab` switches the TUI between:
 
 Project scope uses the same repo inventory as user scope. It does not switch to an installed-only list. In project scope, Loadout also shows when a skill is already installed in user scope so you can choose to install a second project copy to share with collaborators via git.
 
+Ready project-local skills can also appear directly in the inventory as `not in repo` rows. Selecting one shows import guidance and preview content, but repo actions stay blocked until you import it into the managed repo.
+
 ## Import
 
 ### TUI (bulk import)
 
 Press `i` in the TUI to open the import screen. Loadout scans enabled target roots for unmanaged local skills and lists them as import candidates. This is the fastest way to migrate an existing skill collection — select what you want and import everything in one pass.
 
-In project scope, the TUI keeps `i` available but only surfaces an import hint when untracked skills are found near the project.
+In project scope, ready project-local skills may already be visible in the main inventory as `not in repo` rows. The import screen remains the place to review all discovered candidates and import one or many in a batch.
 
 ### CLI (single skill)
 

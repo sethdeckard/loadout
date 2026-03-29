@@ -1132,6 +1132,28 @@ func TestRenderStatus_UnmanagedUsesNotInRepoLabel(t *testing.T) {
 	}
 }
 
+func TestUserCheckboxFor_UnmanagedUsesInfoColor(t *testing.T) {
+	v := app.SkillView{
+		InstalledClaude: true,
+		Flags:           []reconcile.StatusFlag{reconcile.StatusUnmanaged},
+	}
+
+	if got, want := userCheckboxFor(v), statusInfoStyle.Render("[x]"); got != want {
+		t.Fatalf("checkbox = %q, want %q", got, want)
+	}
+}
+
+func TestCheckboxFor_ProjectUnmanagedUsesInfoColor(t *testing.T) {
+	v := app.SkillView{
+		InstalledClaude: true,
+		Flags:           []reconcile.StatusFlag{reconcile.StatusUnmanaged},
+	}
+
+	if got, want := checkboxFor(v), statusInfoStyle.Render("[g]"); got != want {
+		t.Fatalf("checkbox = %q, want %q", got, want)
+	}
+}
+
 func TestRenderHelp_IncludesSettingsShortcut(t *testing.T) {
 	m := testModel()
 	help := m.renderHelp(30)

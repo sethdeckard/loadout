@@ -415,6 +415,12 @@ func (m Model) renderSkillList(width, height int) string {
 }
 
 func checkboxFor(v app.SkillView) string {
+	if skillHasFlag(v, reconcile.StatusUnmanaged) && (v.InstalledClaude || v.InstalledCodex) {
+		if v.ProjectClaude || v.ProjectCodex {
+			return statusInfoStyle.Render("[*]")
+		}
+		return statusInfoStyle.Render("[g]")
+	}
 	if v.ProjectClaude || v.ProjectCodex {
 		if v.InstalledClaude || v.InstalledCodex {
 			return enabledStyle.Render("[*]")
@@ -428,10 +434,22 @@ func checkboxFor(v app.SkillView) string {
 }
 
 func userCheckboxFor(v app.SkillView) string {
+	if skillHasFlag(v, reconcile.StatusUnmanaged) && (v.InstalledClaude || v.InstalledCodex) {
+		return statusInfoStyle.Render("[x]")
+	}
 	if v.InstalledClaude || v.InstalledCodex {
 		return enabledStyle.Render("[x]")
 	}
 	return disabledStyle.Render("[ ]")
+}
+
+func skillHasFlag(v app.SkillView, flag reconcile.StatusFlag) bool {
+	for _, existing := range v.Flags {
+		if existing == flag {
+			return true
+		}
+	}
+	return false
 }
 
 func truncateToWindow(content string, height, offset int) (visible string, clampedOffset int, moreAbove bool, moreBelow bool) {

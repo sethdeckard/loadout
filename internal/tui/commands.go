@@ -117,6 +117,21 @@ func loadLocalPreviewCmd(svc *app.Service, name domain.SkillName, targetRoot str
 	}
 }
 
+func loadImportSourcePreviewCmd(svc *app.Service, sourceDir string, targets []domain.Target) tea.Cmd {
+	return func() tea.Msg {
+		preview, err := svc.PreviewImportSource(sourceDir, targets)
+		if err != nil {
+			return previewMsg{err: err}
+		}
+		return previewMsg{
+			preview: app.SkillPreview{
+				Skill:    preview.Skill,
+				Markdown: preview.Markdown,
+			},
+		}
+	}
+}
+
 func loadImportPreviewCmd(svc *app.Service, sourceDir string, targets []domain.Target) tea.Cmd {
 	return func() tea.Msg {
 		preview, err := svc.PreviewImportSource(sourceDir, targets)

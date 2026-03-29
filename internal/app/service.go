@@ -33,7 +33,11 @@ func (s *Service) ListSkills() ([]SkillView, error) {
 }
 
 func (s *Service) ListSkillsForProject(projectRoot string) ([]SkillView, error) {
-	return s.listSkills(projectRoot)
+	views, err := s.listSkills(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+	return s.appendReadyProjectImportViews(projectRoot, views)
 }
 
 func (s *Service) listSkills(projectRoot string) ([]SkillView, error) {
@@ -72,6 +76,39 @@ func (s *Service) listSkills(projectRoot string) ([]SkillView, error) {
 		}
 		views = append(views, view)
 	}
+	return views, nil
+}
+
+func (s *Service) appendReadyProjectImportViews(projectRoot string, views []SkillView) ([]SkillView, error) {
+	if projectRoot == "" {
+		return views, nil
+	}
+
+	candidates, err := s.ListImportCandidatesFromDir(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	existing := make(map[domain.SkillName]bool, len(views))
+	for _, view := range views {
+		existing[view.Skill.Name] = true
+	}
+
+	for _, candidate := range candidates {
+		if !candidate.Ready || existing[candidate.SkillName] {
+			continue
+		}
+		views = append(views, SkillView{
+			Skill: domain.Skill{
+				Name:    candidate.SkillName,
+				Targets: append([]domain.Target(nil), candidate.Targets...),
+			},
+			Flags:          []reconcile.StatusFlag{reconcile.StatusUnmanaged},
+			LocalSourceDir: candidate.SourceDir,
+		})
+		existing[candidate.SkillName] = true
+	}
+
 	return views, nil
 }
 

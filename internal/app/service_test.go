@@ -11,6 +11,7 @@ import (
 	"github.com/sethdeckard/loadout/internal/config"
 	"github.com/sethdeckard/loadout/internal/domain"
 	"github.com/sethdeckard/loadout/internal/install"
+	"github.com/sethdeckard/loadout/internal/reconcile"
 )
 
 func testTargetConfig(path string) config.TargetConfig {
@@ -936,6 +937,68 @@ func TestListSkillsForProject_IncludesUserAndProjectState(t *testing.T) {
 	}
 	if !view.ProjectCodex {
 		t.Fatal("expected project Codex install")
+	}
+}
+
+func TestListSkillsForProject_AppendsReadyProjectImportCandidates(t *testing.T) {
+	svc, _ := setupTestEnv(t)
+	projectDir := t.TempDir()
+	source := filepath.Join(projectDir, "local-only")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("setup source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("# Local Only\n"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	views, err := svc.ListSkillsForProject(projectDir)
+	if err != nil {
+		t.Fatalf("ListSkillsForProject() error = %v", err)
+	}
+	if len(views) != 2 {
+		t.Fatalf("got %d views, want 2", len(views))
+	}
+	var found *SkillView
+	for i := range views {
+		if views[i].Skill.Name == "local-only" {
+			found = &views[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("expected ready project-local candidate in views")
+	}
+	if got, want := found.Flags, []reconcile.StatusFlag{reconcile.StatusUnmanaged}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("Flags = %v, want %v", got, want)
+	}
+	if got, want := found.LocalSourceDir, source; got != want {
+		t.Fatalf("LocalSourceDir = %q, want %q", got, want)
+	}
+	if got, want := found.Skill.Targets, []domain.Target{domain.TargetClaude, domain.TargetCodex}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("Targets = %v, want %v", got, want)
+	}
+}
+
+func TestListSkillsForProject_SkipsBlockedProjectImportCandidates(t *testing.T) {
+	svc, _ := setupTestEnv(t)
+	projectDir := t.TempDir()
+	source := filepath.Join(projectDir, "skills", "test-skill")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("setup source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("# Test Skill\n"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	views, err := svc.ListSkillsForProject(projectDir)
+	if err != nil {
+		t.Fatalf("ListSkillsForProject() error = %v", err)
+	}
+	if len(views) != 1 {
+		t.Fatalf("got %d views, want 1", len(views))
+	}
+	if views[0].Skill.Name != "test-skill" {
+		t.Fatalf("only repo skill should remain, got %q", views[0].Skill.Name)
 	}
 }
 

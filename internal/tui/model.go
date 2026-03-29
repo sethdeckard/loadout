@@ -212,6 +212,9 @@ func (m Model) selectedImportCandidate() *app.ImportCandidateView {
 }
 
 func (m Model) previewCmdForSkill(sel *app.SkillView) tea.Cmd {
+	if sel.LocalSourceDir != "" {
+		return loadImportSourcePreviewCmd(m.svc, sel.LocalSourceDir, sel.Skill.Targets)
+	}
 	if sel.LocalRoot != "" {
 		return loadLocalPreviewCmd(m.svc, sel.Skill.Name, sel.LocalRoot)
 	}

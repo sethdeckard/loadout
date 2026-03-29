@@ -1168,6 +1168,16 @@ func TestCheckboxFor_ProjectUnmanagedUsesInfoColor(t *testing.T) {
 	}
 }
 
+func TestCheckboxFor_ProjectReadyImportCandidateUsesInfoColor(t *testing.T) {
+	v := app.SkillView{
+		Flags: []reconcile.StatusFlag{reconcile.StatusUnmanaged},
+	}
+
+	if got, want := checkboxFor(v), statusInfoStyle.Render("[ ]"); got != want {
+		t.Fatalf("checkbox = %q, want %q", got, want)
+	}
+}
+
 func TestRenderHelp_IncludesSettingsShortcut(t *testing.T) {
 	m := testModel()
 	help := m.renderHelp(30)
@@ -1920,6 +1930,43 @@ func TestPreviewCmdForSkill_UsesLocalPreviewForUnmanagedRows(t *testing.T) {
 	}
 }
 
+func TestPreviewCmdForSkill_UsesImportPreviewForProjectImportRows(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "project-only")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("mkdir source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("# Project Only\nPreview body."), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	m := testModel()
+	m.skills[0].Flags = []reconcile.StatusFlag{reconcile.StatusUnmanaged}
+	m.skills[0].Skill.Targets = []domain.Target{domain.TargetClaude, domain.TargetCodex}
+	m.skills[0].LocalRoot = ""
+	m.skills[0].LocalSourceDir = source
+	m.applyFilter()
+
+	cmd := m.previewCmdForSkill(m.selectedSkill())
+	if cmd == nil {
+		t.Fatal("expected import-source preview command")
+	}
+	msg := cmd()
+	preview, ok := msg.(previewMsg)
+	if !ok {
+		t.Fatalf("cmd() type = %T, want previewMsg", msg)
+	}
+	if preview.err != nil {
+		t.Fatalf("preview err = %v", preview.err)
+	}
+	if preview.preview.Skill.Name != "project-only" {
+		t.Fatalf("Name = %q, want project-only", preview.preview.Skill.Name)
+	}
+	if !strings.Contains(preview.preview.Markdown, "Preview body.") {
+		t.Fatalf("Markdown = %q, want preview body", preview.preview.Markdown)
+	}
+}
+
 func TestFocus_JKMovesSkillCursor(t *testing.T) {
 	m := testModel()
 	m.focusPane = paneSkills
@@ -2047,6 +2094,29 @@ func TestRenderDetails_UnmanagedShowsImportBanner(t *testing.T) {
 	}
 	if !strings.Contains(output, "Name:") {
 		t.Fatalf("details should still show metadata below banner:\n%s", output)
+	}
+}
+
+func TestRenderDetails_ProjectImportRowShowsUnmanagedBanner(t *testing.T) {
+	m := testModel()
+	m.detectedProject = testProject
+	m.projectRoot = testProject
+	m.skills = []app.SkillView{{
+		Skill: domain.Skill{
+			Name:    "project-only",
+			Targets: []domain.Target{domain.TargetClaude},
+		},
+		Flags:          []reconcile.StatusFlag{reconcile.StatusUnmanaged},
+		LocalSourceDir: filepath.Join(testProject, "project-only"),
+	}}
+	m.applyFilter()
+
+	output := m.renderDetails(60, 20)
+	if !strings.Contains(output, "`i` to import this unmanaged skill") {
+		t.Fatalf("details should show import banner for project import rows:\n%s", output)
+	}
+	if !strings.Contains(output, "Name:") {
+		t.Fatalf("details should show metadata for project import rows:\n%s", output)
 	}
 }
 

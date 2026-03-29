@@ -67,6 +67,69 @@ func testModel() Model {
 	return m
 }
 
+func addTestSkills(m *Model, count int) {
+	for i := 0; i < count; i++ {
+		name := domain.SkillName("skill-" + string(rune('a'+(i%26))) + string(rune('a'+((i/26)%26))))
+		m.skills = append(m.skills, app.SkillView{
+			Skill: domain.Skill{
+				Name:    name,
+				Targets: []domain.Target{domain.TargetClaude},
+				Path:    "skills/" + string(name),
+			},
+			Flags: []reconcile.StatusFlag{reconcile.StatusInactive},
+		})
+	}
+	m.applyFilter()
+}
+
+func importCandidates(count int) []app.ImportCandidateView {
+	candidates := make([]app.ImportCandidateView, 0, count)
+	for i := 0; i < count; i++ {
+		name := domain.SkillName("import-" + string(rune('a'+(i%26))) + string(rune('a'+((i/26)%26))))
+		candidates = append(candidates, app.ImportCandidateView{
+			SkillName: name,
+			SourceDir: filepath.Join("/tmp", string(name)),
+			Targets:   []domain.Target{domain.TargetClaude},
+			Ready:     true,
+			FromRoots: []domain.Target{domain.TargetClaude},
+		})
+	}
+	return candidates
+}
+
+func browseEntries(count int) []string {
+	entries := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		entries = append(entries, "dir-"+string(rune('a'+(i%26)))+string(rune('a'+((i/26)%26))))
+	}
+	return entries
+}
+
+func ctrlKey(t tea.KeyType) tea.KeyMsg {
+	return tea.KeyMsg{Type: t}
+}
+
+func fieldLabel(field settingsField) string {
+	switch field {
+	case settingsFieldRepo:
+		return "Repo Path"
+	case settingsFieldClaudeEnabled:
+		return "Claude Enabled"
+	case settingsFieldClaudePath:
+		return "Claude Skills Path"
+	case settingsFieldCodexEnabled:
+		return "Codex Enabled"
+	case settingsFieldCodexPath:
+		return "Codex Skills Path"
+	case settingsFieldImportAutoCommit:
+		return "Import Auto-Commit"
+	case settingsFieldDeleteAutoCommit:
+		return "Delete Auto-Commit"
+	default:
+		return ""
+	}
+}
+
 func TestNavigationDown(t *testing.T) {
 	m := testModel()
 	if m.cursor != 0 {
@@ -108,6 +171,41 @@ func TestNavigationBounds(t *testing.T) {
 	model = m2.(Model)
 	if model.cursor != len(m.filtered)-1 {
 		t.Errorf("cursor after j at bottom = %d, want %d", model.cursor, len(m.filtered)-1)
+	}
+}
+
+func TestClassifyKey_PageKeys(t *testing.T) {
+	if got := classifyKey(ctrlKey(tea.KeyCtrlU)); got != keyPageUp {
+		t.Fatalf("ctrl+u action = %v, want %v", got, keyPageUp)
+	}
+	if got := classifyKey(ctrlKey(tea.KeyCtrlD)); got != keyPageDown {
+		t.Fatalf("ctrl+d action = %v, want %v", got, keyPageDown)
+	}
+}
+
+func TestNavigation_CtrlDPagesSkillList(t *testing.T) {
+	m := testModel()
+	addTestSkills(&m, 24)
+
+	step := pageStep(m.skillListVisibleItems(m.skillListContentHeight()))
+	m2, _ := m.Update(ctrlKey(tea.KeyCtrlD))
+	model := m2.(Model)
+
+	if got, want := model.cursor, step; got != want {
+		t.Fatalf("cursor after ctrl+d = %d, want %d", got, want)
+	}
+}
+
+func TestNavigation_CtrlUClampsSkillList(t *testing.T) {
+	m := testModel()
+	addTestSkills(&m, 24)
+	m.cursor = 1
+
+	m2, _ := m.Update(ctrlKey(tea.KeyCtrlU))
+	model := m2.(Model)
+
+	if got := model.cursor; got != 0 {
+		t.Fatalf("cursor after ctrl+u = %d, want 0", got)
 	}
 }
 
@@ -405,6 +503,23 @@ func TestRenderSkillList_ShowsUppercaseDeleteAction(t *testing.T) {
 	}
 	if strings.Contains(list, "r delete repo copy") {
 		t.Fatalf("skill list should not show lowercase delete action:\n%s", list)
+	}
+}
+
+func TestRenderSkillList_KeepsCursorVisibleWhenPaged(t *testing.T) {
+	m := testModel()
+	addTestSkills(&m, 24)
+	m.cursor = len(m.filtered) - 1
+
+	list := m.renderSkillList(40, 12)
+	selectedName := string(m.filtered[m.cursor].Skill.Name)
+	firstName := string(m.filtered[0].Skill.Name)
+
+	if !strings.Contains(list, "> [ ] "+selectedName) {
+		t.Fatalf("skill list should keep selected row visible:\n%s", list)
+	}
+	if strings.Contains(list, firstName) {
+		t.Fatalf("skill list should window away early rows when cursor is near bottom:\n%s", list)
 	}
 }
 
@@ -948,6 +1063,9 @@ func TestRenderHelp_IncludesSettingsShortcut(t *testing.T) {
 	if !strings.Contains(help, "i               Open import for current scope") {
 		t.Fatalf("help missing import shortcut:\n%s", help)
 	}
+	if !strings.Contains(help, "ctrl+u/d        Move or scroll half a page") {
+		t.Fatalf("help missing page shortcut:\n%s", help)
+	}
 }
 
 func TestView_FitsTerminalHeight_Settings(t *testing.T) {
@@ -957,6 +1075,34 @@ func TestView_FitsTerminalHeight_Settings(t *testing.T) {
 	m.openSettings()
 
 	assertViewFitsHeight(t, m)
+}
+
+func TestSettings_CtrlDPagesFields(t *testing.T) {
+	m := testModel()
+	m.openSettings()
+
+	step := pageStep(m.settingsVisibleFields(m.mainBodyHeight()))
+	m2, _ := m.Update(ctrlKey(tea.KeyCtrlD))
+	model := m2.(Model)
+
+	want := min(step, int(settingsFieldCount-1))
+	if got := int(model.settingsField); got != want {
+		t.Fatalf("settingsField after ctrl+d = %d, want %d", got, want)
+	}
+}
+
+func TestRenderSettingsContent_KeepsSelectedFieldVisibleWhenPaged(t *testing.T) {
+	m := testModel()
+	m.openSettings()
+	m.settingsField = settingsFieldDeleteAutoCommit
+
+	content := m.renderSettingsContent(80, 12)
+	if !strings.Contains(content, "> "+fieldLabel(settingsFieldDeleteAutoCommit)+":") {
+		t.Fatalf("settings content should keep selected field visible:\n%s", content)
+	}
+	if strings.Contains(content, fieldLabel(settingsFieldRepo)+":") {
+		t.Fatalf("settings content should window away early fields near the bottom:\n%s", content)
+	}
 }
 
 func TestImport_OpenAndClose(t *testing.T) {
@@ -978,6 +1124,36 @@ func TestImport_OpenAndClose(t *testing.T) {
 	model = m3.(Model)
 	if model.inImportScreen() {
 		t.Fatal("expected import screen to close")
+	}
+}
+
+func TestImport_CtrlDPagesCandidates(t *testing.T) {
+	m := testModel()
+	m.screen = screenImport
+	m.imports = importCandidates(20)
+
+	step := pageStep(m.importListVisibleItems(m.importContentHeight()))
+	m2, _ := m.Update(ctrlKey(tea.KeyCtrlD))
+	model := m2.(Model)
+
+	if got, want := model.cursor, step; got != want {
+		t.Fatalf("cursor after ctrl+d = %d, want %d", got, want)
+	}
+}
+
+func TestImport_BrowseCtrlDPagesDirectories(t *testing.T) {
+	m := testModel()
+	m.screen = screenImport
+	m.importBrowsing = true
+	m.browseDir = testHome
+	m.browseDirEntries = browseEntries(20)
+
+	step := pageStep(m.importListVisibleItems(m.importContentHeight()))
+	m2, _ := m.Update(ctrlKey(tea.KeyCtrlD))
+	model := m2.(Model)
+
+	if got, want := model.browseCursor, step; got != want {
+		t.Fatalf("browseCursor after ctrl+d = %d, want %d", got, want)
 	}
 }
 
@@ -1569,6 +1745,32 @@ func TestFocus_JKScrollsDetails(t *testing.T) {
 	model = m3.(Model)
 	if model.detailScroll != 0 {
 		t.Errorf("detailScroll after k = %d, want 0", model.detailScroll)
+	}
+}
+
+func TestFocus_CtrlDPagesDetails(t *testing.T) {
+	m := testModel()
+	m.focusPane = paneDetails
+
+	step := pageStep(m.detailContentHeight())
+	m2, _ := m.Update(ctrlKey(tea.KeyCtrlD))
+	model := m2.(Model)
+
+	if got, want := model.detailScroll, step; got != want {
+		t.Fatalf("detailScroll after ctrl+d = %d, want %d", got, want)
+	}
+}
+
+func TestHelp_CtrlUPagesHelp(t *testing.T) {
+	m := testModel()
+	m.showHelp = true
+	m.helpScroll = pageStep(m.mainBodyHeight()) + 1
+
+	m2, _ := m.Update(ctrlKey(tea.KeyCtrlU))
+	model := m2.(Model)
+
+	if got := model.helpScroll; got != 1 {
+		t.Fatalf("helpScroll after ctrl+u = %d, want 1", got)
 	}
 }
 
@@ -2337,6 +2539,16 @@ func TestRenderFooter_ShowsImportOnInventory(t *testing.T) {
 	}
 }
 
+func TestRenderFooter_HelpShowsPageKeys(t *testing.T) {
+	m := testModel()
+	m.showHelp = true
+
+	footer := m.renderFooter()
+	if !strings.Contains(footer, "ctrl+u/d") {
+		t.Fatalf("help footer should show page keys:\n%s", footer)
+	}
+}
+
 func TestImport_LoadImportPreview(t *testing.T) {
 	m := testModel()
 	preview := app.ImportPreview{
@@ -2401,6 +2613,44 @@ func TestImport_BrowseViewShowsParentEntry(t *testing.T) {
 	v := m.View()
 	if !strings.Contains(v, "../") {
 		t.Fatalf("browse view should contain parent entry:\n%s", v)
+	}
+}
+
+func TestImport_RenderListPaneKeepsCursorVisibleWhenPaged(t *testing.T) {
+	m := testModel()
+	m.screen = screenImport
+	m.imports = importCandidates(20)
+	m.cursor = len(m.imports) - 1
+
+	pane := m.renderImportListPane(80, 14)
+	selected := string(m.imports[m.cursor].SkillName)
+	first := string(m.imports[0].SkillName)
+
+	if !strings.Contains(pane, "> "+selected) {
+		t.Fatalf("import pane should keep selected candidate visible:\n%s", pane)
+	}
+	if strings.Contains(pane, first) {
+		t.Fatalf("import pane should window away early candidates near the bottom:\n%s", pane)
+	}
+}
+
+func TestImport_RenderBrowsePaneKeepsCursorVisibleWhenPaged(t *testing.T) {
+	m := testModel()
+	m.screen = screenImport
+	m.importBrowsing = true
+	m.browseDir = testHome
+	m.browseDirEntries = browseEntries(20)
+	m.browseCursor = len(m.browseDirEntries)
+
+	pane := m.renderImportListPane(80, 14)
+	selected := m.browseDirEntries[len(m.browseDirEntries)-1] + string(filepath.Separator)
+	first := m.browseDirEntries[0] + string(filepath.Separator)
+
+	if !strings.Contains(pane, "> "+selected) {
+		t.Fatalf("browse pane should keep selected directory visible:\n%s", pane)
+	}
+	if strings.Contains(pane, first) {
+		t.Fatalf("browse pane should window away early directories near the bottom:\n%s", pane)
 	}
 }
 

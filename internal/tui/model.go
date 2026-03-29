@@ -368,8 +368,23 @@ func (m Model) loadSelectedImportPreviewCmd() tea.Cmd {
 }
 
 func (m *Model) moveImportCursor(cursor int) tea.Cmd {
-	m.cursor = cursor
+	m.cursor = clampIndex(cursor, len(m.imports))
 	return m.loadSelectedImportPreviewCmd()
+}
+
+func (m *Model) moveSkillCursor(cursor int) tea.Cmd {
+	cursor = clampIndex(cursor, len(m.filtered))
+	if cursor == m.cursor {
+		return nil
+	}
+	m.cursor = cursor
+	m.clearDeleteState()
+	m.detailScroll = 0
+	m.doctor = nil
+	if sel := m.selectedSkill(); sel != nil {
+		return m.previewCmdForSkill(sel)
+	}
+	return nil
 }
 
 func (m *Model) toggleImportScope() tea.Cmd {

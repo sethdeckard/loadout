@@ -352,16 +352,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.detailScroll = max(0, m.detailScroll-1)
 			return m, nil
 		}
-		if m.cursor > 0 {
-			m.cursor--
-			m.clearDeleteState()
-			m.detailScroll = 0
-			m.doctor = nil
-			if sel := m.selectedSkill(); sel != nil {
-				return m, m.previewCmdForSkill(sel)
-			}
-		}
-		return m, nil
+		return m, m.moveSkillCursor(m.cursor - 1)
 
 	case keyDown:
 		if m.showHelp {
@@ -372,16 +363,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.detailScroll++
 			return m, nil
 		}
-		if m.cursor < len(m.filtered)-1 {
-			m.cursor++
-			m.clearDeleteState()
-			m.detailScroll = 0
-			m.doctor = nil
-			if sel := m.selectedSkill(); sel != nil {
-				return m, m.previewCmdForSkill(sel)
-			}
-		}
-		return m, nil
+		return m, m.moveSkillCursor(m.cursor + 1)
 
 	case keyTop:
 		if m.showHelp {
@@ -392,14 +374,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.detailScroll = 0
 			return m, nil
 		}
-		m.cursor = 0
-		m.clearDeleteState()
-		m.detailScroll = 0
-		m.doctor = nil
-		if sel := m.selectedSkill(); sel != nil {
-			return m, m.previewCmdForSkill(sel)
-		}
-		return m, nil
+		return m, m.moveSkillCursor(0)
 
 	case keyBottom:
 		if m.showHelp {
@@ -410,14 +385,29 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.detailScroll = 999999 // clamped in view
 			return m, nil
 		}
-		m.cursor = max(0, len(m.filtered)-1)
-		m.clearDeleteState()
-		m.detailScroll = 0
-		m.doctor = nil
-		if sel := m.selectedSkill(); sel != nil {
-			return m, m.previewCmdForSkill(sel)
+		return m, m.moveSkillCursor(len(m.filtered) - 1)
+
+	case keyPageUp:
+		if m.showHelp {
+			m.helpScroll = max(0, m.helpScroll-pageStep(m.mainBodyHeight()))
+			return m, nil
 		}
-		return m, nil
+		if m.focusPane == paneDetails {
+			m.detailScroll = max(0, m.detailScroll-pageStep(m.detailContentHeight()))
+			return m, nil
+		}
+		return m, m.moveSkillCursor(m.cursor - pageStep(m.skillListVisibleItems(m.skillListContentHeight())))
+
+	case keyPageDown:
+		if m.showHelp {
+			m.helpScroll += pageStep(m.mainBodyHeight())
+			return m, nil
+		}
+		if m.focusPane == paneDetails {
+			m.detailScroll += pageStep(m.detailContentHeight())
+			return m, nil
+		}
+		return m, m.moveSkillCursor(m.cursor + pageStep(m.skillListVisibleItems(m.skillListContentHeight())))
 
 	case keyLeft:
 		m.focusPane = paneSkills
@@ -720,6 +710,18 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.moveImportCursor(max(0, len(m.imports)-1))
+	case keyPageUp:
+		if m.showHelp {
+			m.helpScroll = max(0, m.helpScroll-pageStep(m.mainBodyHeight()))
+			return m, nil
+		}
+		return m, m.moveImportCursor(m.cursor - pageStep(m.importListVisibleItems(m.importContentHeight())))
+	case keyPageDown:
+		if m.showHelp {
+			m.helpScroll += pageStep(m.mainBodyHeight())
+			return m, nil
+		}
+		return m, m.moveImportCursor(m.cursor + pageStep(m.importListVisibleItems(m.importContentHeight())))
 	case keyHelp:
 		m.showHelp = !m.showHelp
 		m.helpScroll = 0
@@ -809,6 +811,20 @@ func (m Model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.browseCursor = len(m.browseDirEntries)
+		return m, nil
+	case keyPageUp:
+		if m.showHelp {
+			m.helpScroll = max(0, m.helpScroll-pageStep(m.mainBodyHeight()))
+			return m, nil
+		}
+		m.browseCursor = max(0, m.browseCursor-pageStep(m.importListVisibleItems(m.importContentHeight())))
+		return m, nil
+	case keyPageDown:
+		if m.showHelp {
+			m.helpScroll += pageStep(m.mainBodyHeight())
+			return m, nil
+		}
+		m.browseCursor = min(len(m.browseDirEntries), m.browseCursor+pageStep(m.importListVisibleItems(m.importContentHeight())))
 		return m, nil
 	case keyHelp:
 		m.showHelp = !m.showHelp
@@ -924,6 +940,25 @@ func (m Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.settingsField = settingsFieldCount - 1
+		return m, nil
+	case keyPageUp:
+		if m.showHelp {
+			m.helpScroll = max(0, m.helpScroll-pageStep(m.mainBodyHeight()))
+			return m, nil
+		}
+		m.settingsField = settingsField(max(0, int(m.settingsField)-pageStep(m.settingsVisibleFields(m.mainBodyHeight()))))
+		return m, nil
+	case keyPageDown:
+		if m.showHelp {
+			m.helpScroll += pageStep(m.mainBodyHeight())
+			return m, nil
+		}
+		next := int(m.settingsField) + pageStep(m.settingsVisibleFields(m.mainBodyHeight()))
+		last := int(settingsFieldCount - 1)
+		if next > last {
+			next = last
+		}
+		m.settingsField = settingsField(next)
 		return m, nil
 	case keyHelp:
 		m.showHelp = !m.showHelp

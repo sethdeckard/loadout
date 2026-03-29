@@ -106,6 +106,7 @@ func (m Model) renderFooter() string {
 	if m.showHelp {
 		keys := []struct{ key, label string }{
 			{"j/k", "scroll"},
+			{"ctrl+u/d", "page"},
 			{"esc", "close"},
 			{"q", "quit"},
 		}
@@ -137,6 +138,7 @@ func (m Model) renderFooter() string {
 		if m.importBrowsing {
 			keys := []struct{ key, label string }{
 				{"j/k", "move"},
+				{"ctrl+u/d", "page"},
 				{"tab", toggleScopeLabel(m.inProjectMode())},
 				{"esc", "cancel"},
 				{"?", "help"},
@@ -146,6 +148,7 @@ func (m Model) renderFooter() string {
 		}
 		keys := []struct{ key, label string }{
 			{"j/k", "move"},
+			{"ctrl+u/d", "page"},
 			{"tab", toggleScopeLabel(m.inProjectMode())},
 			{"esc", "close"},
 			{"?", "help"},
@@ -157,6 +160,7 @@ func (m Model) renderFooter() string {
 	if m.inSettingsScreen() {
 		keys := []struct{ key, label string }{
 			{"j/k", "move"},
+			{"ctrl+u/d", "page"},
 			{"enter", "edit/toggle"},
 			{"ctrl+s", "save"},
 			{"esc", "close"},
@@ -381,7 +385,9 @@ func (m Model) renderSkillList(width, height int) string {
 		return m.renderListPaneWithFooter(b.String(), m.renderPaneFooterActions(m.inProjectMode()), width, height)
 	}
 
-	for i, v := range m.filtered {
+	start, end := windowRange(len(m.filtered), m.skillListVisibleItems(height), m.cursor)
+	for i := start; i < end; i++ {
+		v := m.filtered[i]
 		if b.Len() > height*width {
 			break
 		}
@@ -645,6 +651,7 @@ func (m Model) renderHelp(height int) string {
 
   Navigation
     j/k, up/down    Move selection / scroll details
+    ctrl+u/d        Move or scroll half a page
     g/G, home/end   Jump to top/bottom
     h/l, left/right Switch pane focus
     /               Start filter
@@ -675,6 +682,7 @@ func (m Model) renderImportHelp(height int) string {
 
   Navigation
     j/k, up/down    Move between import candidates
+    ctrl+u/d        Move half a page
     g/G, home/end   Jump to top/bottom
 
   Actions
@@ -707,6 +715,7 @@ func (m Model) renderSettingsHelp(height int) string {
 
   Navigation
     j/k, up/down    Move between fields
+    ctrl+u/d        Move half a page
     g/G, home/end   Jump to top/bottom field
 
   Editing
@@ -878,6 +887,7 @@ func (m Model) renderListPaneWithFooter(content, footer string, width, height in
 	if height <= 0 {
 		return ""
 	}
+	content = strings.TrimRight(content, "\n")
 	if footer == "" {
 		return clipWrappedContent(content, width, height)
 	}
@@ -1099,15 +1109,19 @@ func (m Model) renderImportListPane(width, height int) string {
 			return m.renderListPaneWithFooter(b.String(), m.renderImportPaneFooter(), width, height)
 		}
 
-		parentLine := "  ../"
-		if m.browseCursor == 0 {
-			parentLine = "> ../"
-			b.WriteString(selectedStyle.Render(parentLine) + "\n")
-		} else {
-			b.WriteString(normalStyle.Render(parentLine) + "\n")
+		start, end := windowRange(len(m.browseDirEntries)+1, m.importListVisibleItems(height), m.browseCursor)
+		if start == 0 {
+			parentLine := "  ../"
+			if m.browseCursor == 0 {
+				parentLine = "> ../"
+				b.WriteString(selectedStyle.Render(parentLine) + "\n")
+			} else {
+				b.WriteString(normalStyle.Render(parentLine) + "\n")
+			}
 		}
 
-		for i, name := range m.browseDirEntries {
+		for i := max(0, start-1); i < min(len(m.browseDirEntries), end-1); i++ {
+			name := m.browseDirEntries[i]
 			cursor := "  "
 			if i+1 == m.browseCursor {
 				cursor = "> "
@@ -1140,7 +1154,9 @@ func (m Model) renderImportListPane(width, height int) string {
 		return m.renderListPaneWithFooter(b.String(), m.renderImportPaneFooter(), width, height)
 	}
 
-	for i, candidate := range m.imports {
+	start, end := windowRange(len(m.imports), m.importListVisibleItems(height), m.cursor)
+	for i := start; i < end; i++ {
+		candidate := m.imports[i]
 		cursor := "  "
 		if i == m.cursor {
 			cursor = "> "
@@ -1264,7 +1280,7 @@ func (m Model) renderSettingsContent(width, height int) string {
 	b.WriteString(dimStyle.Render("Edit the persisted Loadout config.") + "\n")
 	b.WriteString(dimStyle.Render(shortenHomePath(config.DefaultPath())) + "\n\n")
 
-	for _, field := range []settingsField{
+	fields := []settingsField{
 		settingsFieldRepo,
 		settingsFieldClaudeEnabled,
 		settingsFieldClaudePath,
@@ -1272,7 +1288,9 @@ func (m Model) renderSettingsContent(width, height int) string {
 		settingsFieldCodexPath,
 		settingsFieldImportAutoCommit,
 		settingsFieldDeleteAutoCommit,
-	} {
+	}
+	start, end := windowRange(len(fields), m.settingsVisibleFields(height), int(m.settingsField))
+	for _, field := range fields[start:end] {
 		cursor := "  "
 		if field == m.settingsField {
 			cursor = "> "

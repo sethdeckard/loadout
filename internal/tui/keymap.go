@@ -25,6 +25,8 @@ const (
 	keySave
 	keyLeft
 	keyRight
+	keyPageUp
+	keyPageDown
 	keyQuit
 )
 
@@ -68,6 +70,10 @@ func classifyKey(msg tea.KeyMsg) keyAction {
 		return keyLeft
 	case "l", "right":
 		return keyRight
+	case "ctrl+u":
+		return keyPageUp
+	case "ctrl+d":
+		return keyPageDown
 	case "q", "ctrl+c":
 		return keyQuit
 	}

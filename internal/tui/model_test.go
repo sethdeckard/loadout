@@ -465,8 +465,8 @@ func TestRenderFooter_OmitsPrimaryEquipActions(t *testing.T) {
 	if strings.Contains(footer, "delete") || strings.Contains(footer, "sync") {
 		t.Fatalf("footer should not duplicate utility actions:\n%s", footer)
 	}
-	if !strings.Contains(footer, "import") {
-		t.Fatalf("footer should show import action:\n%s", footer)
+	if strings.Contains(footer, "import") {
+		t.Fatalf("footer should not duplicate import action:\n%s", footer)
 	}
 }
 
@@ -2686,12 +2686,12 @@ func TestImport_ShortHeight(t *testing.T) {
 	}
 }
 
-func TestRenderFooter_ShowsImportOnInventory(t *testing.T) {
+func TestRenderFooter_OmitsImportOnInventory(t *testing.T) {
 	m := testModel()
 
 	footer := m.renderFooter()
-	if !strings.Contains(footer, "import") {
-		t.Fatalf("inventory footer should show import:\n%s", footer)
+	if strings.Contains(footer, "import") {
+		t.Fatalf("inventory footer should omit import:\n%s", footer)
 	}
 }
 

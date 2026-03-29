@@ -192,7 +192,6 @@ func (m Model) renderFooter() string {
 		secondaryKeys = []struct{ key, label string }{
 			{"h/l", "focus"},
 			{"/", "filter"},
-			{"i", "import"},
 			{"p", "settings"},
 			{"tab", "user"},
 			{"?", "help"},
@@ -202,7 +201,6 @@ func (m Model) renderFooter() string {
 		secondaryKeys = []struct{ key, label string }{
 			{"h/l", "focus"},
 			{"/", "filter"},
-			{"i", "import"},
 			{"p", "settings"},
 			{"tab", "project"},
 			{"?", "help"},

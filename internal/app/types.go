@@ -17,6 +17,7 @@ type SkillView struct {
 	Flags           []reconcile.StatusFlag
 	Orphaned        bool   // managed install present on disk but absent from repo
 	OrphanRoot      string // target root where the orphaned install was found
+	LocalRoot       string // local root for previewing unmanaged or orphaned skills
 }
 
 type SyncResult struct {

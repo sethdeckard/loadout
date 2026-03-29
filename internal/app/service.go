@@ -64,7 +64,11 @@ func (s *Service) listSkills(projectRoot string) ([]SkillView, error) {
 				view.Skill = enriched
 				view.Orphaned = true
 				view.OrphanRoot = root
+				view.LocalRoot = root
 			}
+		}
+		if slices.Contains(status.Flags, reconcile.StatusUnmanaged) {
+			view.LocalRoot = s.localRootForStatus(status)
 		}
 		views = append(views, view)
 	}
@@ -133,6 +137,16 @@ func loadLocalSkill(dir string, name domain.SkillName) domain.Skill {
 		Name:        name,
 		Description: parsed.Fields["description"],
 	}
+}
+
+func (s *Service) localRootForStatus(status reconcile.SkillStatus) string {
+	if status.InstalledClaude {
+		return s.targetRoot(domain.TargetClaude)
+	}
+	if status.InstalledCodex {
+		return s.targetRoot(domain.TargetCodex)
+	}
+	return ""
 }
 
 func listExtraFiles(dir string) []string {

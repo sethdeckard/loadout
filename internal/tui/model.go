@@ -199,8 +199,8 @@ func (m Model) selectedImportCandidate() *app.ImportCandidateView {
 }
 
 func (m Model) previewCmdForSkill(sel *app.SkillView) tea.Cmd {
-	if sel.Orphaned && sel.OrphanRoot != "" {
-		return loadLocalPreviewCmd(m.svc, sel.Skill.Name, sel.OrphanRoot)
+	if sel.LocalRoot != "" {
+		return loadLocalPreviewCmd(m.svc, sel.Skill.Name, sel.LocalRoot)
 	}
 	return loadPreviewCmd(m.svc, sel.Skill.Name)
 }

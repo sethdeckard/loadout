@@ -1837,6 +1837,38 @@ func TestHelp_CtrlUPagesHelp(t *testing.T) {
 	}
 }
 
+func TestPreviewCmdForSkill_UsesLocalPreviewForUnmanagedRows(t *testing.T) {
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "swift-refactor")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Swift Refactor\nPreview body."), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	m := testModel()
+	m.skills[0].Flags = []reconcile.StatusFlag{reconcile.StatusUnmanaged}
+	m.skills[0].LocalRoot = root
+	m.applyFilter()
+
+	cmd := m.previewCmdForSkill(m.selectedSkill())
+	if cmd == nil {
+		t.Fatal("expected local preview command")
+	}
+	msg := cmd()
+	preview, ok := msg.(previewMsg)
+	if !ok {
+		t.Fatalf("cmd() type = %T, want previewMsg", msg)
+	}
+	if preview.err != nil {
+		t.Fatalf("preview err = %v", preview.err)
+	}
+	if !strings.Contains(preview.preview.Markdown, "Preview body.") {
+		t.Fatalf("Markdown = %q, want local preview content", preview.preview.Markdown)
+	}
+}
+
 func TestFocus_JKMovesSkillCursor(t *testing.T) {
 	m := testModel()
 	m.focusPane = paneSkills

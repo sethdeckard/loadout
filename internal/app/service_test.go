@@ -1277,6 +1277,47 @@ func TestListSkills_OrphanedEnrichment(t *testing.T) {
 	if view.OrphanRoot != claudeDir {
 		t.Errorf("OrphanRoot = %q, want %q", view.OrphanRoot, claudeDir)
 	}
+	if view.LocalRoot != claudeDir {
+		t.Errorf("LocalRoot = %q, want %q", view.LocalRoot, claudeDir)
+	}
+}
+
+func TestListSkills_UnmanagedLocalRoot(t *testing.T) {
+	repoDir := t.TempDir()
+	skillsDir := filepath.Join(repoDir, "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	claudeDir := filepath.Join(t.TempDir(), "claude-skills")
+	codexDir := filepath.Join(t.TempDir(), "codex-skills")
+	unmanagedDir := filepath.Join(claudeDir, "local-only")
+	if err := os.MkdirAll(unmanagedDir, 0o755); err != nil {
+		t.Fatalf("setup unmanaged dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(unmanagedDir, "SKILL.md"), []byte("# Local Only\nBody."), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	cfg := config.Config{
+		RepoPath: repoDir,
+		Targets: config.TargetPaths{
+			Claude: testTargetConfig(claudeDir),
+			Codex:  testTargetConfig(codexDir),
+		},
+	}
+	svc := New(cfg)
+
+	views, err := svc.ListSkills()
+	if err != nil {
+		t.Fatalf("ListSkills() error = %v", err)
+	}
+	if len(views) != 1 {
+		t.Fatalf("got %d views, want 1", len(views))
+	}
+	if got, want := views[0].LocalRoot, claudeDir; got != want {
+		t.Fatalf("LocalRoot = %q, want %q", got, want)
+	}
 }
 
 func TestPreviewLocalSkill(t *testing.T) {

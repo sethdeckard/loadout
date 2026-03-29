@@ -1117,6 +1117,21 @@ func TestRenderStatus_UnsupportedTargetsUseCompactNAHint(t *testing.T) {
 	}
 }
 
+func TestRenderStatus_UnmanagedUsesNotInRepoLabel(t *testing.T) {
+	m := testModel()
+	m.skills[0].InstalledClaude = true
+	m.skills[0].Flags = []reconcile.StatusFlag{reconcile.StatusUnmanaged}
+	m.applyFilter()
+
+	status := m.renderStatus(60, 20)
+	if !strings.Contains(status, "not in repo") {
+		t.Fatalf("status should use not in repo label:\n%s", status)
+	}
+	if strings.Contains(status, "unmanaged") {
+		t.Fatalf("status should not use unmanaged label:\n%s", status)
+	}
+}
+
 func TestRenderHelp_IncludesSettingsShortcut(t *testing.T) {
 	m := testModel()
 	help := m.renderHelp(30)

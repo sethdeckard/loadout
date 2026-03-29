@@ -589,13 +589,20 @@ func (m Model) renderStatus(width, height int) string {
 			default:
 				s = statusWarnStyle
 			}
-			b.WriteString(" " + s.Render(string(f)) + "\n")
+			b.WriteString(" " + s.Render(displayStatusFlag(f)) + "\n")
 		}
 	}
 	if sel.Orphaned {
 		b.WriteString("\n" + dimStyle.Render(" press i to import and recover") + "\n")
 	}
 	return clipWrappedContent(b.String(), width, height)
+}
+
+func displayStatusFlag(flag reconcile.StatusFlag) string {
+	if flag == reconcile.StatusUnmanaged {
+		return "not in repo"
+	}
+	return string(flag)
 }
 
 func (m Model) renderScopeInfoPanel(width, height int) string {

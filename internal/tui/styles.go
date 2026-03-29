@@ -29,11 +29,19 @@ var (
 				Foreground(lipgloss.Color("252")).
 				Bold(true)
 
-	paneFooterActionStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("114")).
+	paneFooterAvailableKeyStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("114")).
+					Bold(true)
+
+	paneFooterInfoKeyStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("81")).
 				Bold(true)
 
-	paneFooterDestructiveStyle = lipgloss.NewStyle().
+	paneFooterWarningKeyStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("214")).
+					Bold(true)
+
+	paneFooterDestructiveKeyStyle = lipgloss.NewStyle().
 					Foreground(lipgloss.Color("203")).
 					Bold(true)
 

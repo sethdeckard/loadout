@@ -541,8 +541,11 @@ func TestRenderSkillList_SeparatesAndHighlightsDeleteAction(t *testing.T) {
 	m := testModel()
 
 	list := m.renderSkillList(40, 12)
-	if fg := paneFooterDestructiveStyle.GetForeground(); fg == nil || fg == paneFooterActionStyle.GetForeground() {
+	if fg := paneFooterDestructiveKeyStyle.GetForeground(); fg == nil || fg == paneFooterAvailableKeyStyle.GetForeground() {
 		t.Fatalf("delete action should use a distinct destructive color style")
+	}
+	if !strings.Contains(list, paneFooterDestructiveKeyStyle.Render("D")+" "+dimStyle.Render("delete repo copy")) {
+		t.Fatalf("delete row should color only the key when enabled:\n%s", list)
 	}
 
 	bulkIdx := strings.Index(list, "a equip all (user)")
@@ -550,6 +553,17 @@ func TestRenderSkillList_SeparatesAndHighlightsDeleteAction(t *testing.T) {
 	deleteIdx := strings.Index(list, "D delete repo copy")
 	if bulkIdx == -1 || separatorIdx == -1 || deleteIdx == -1 || !(bulkIdx < separatorIdx && separatorIdx < deleteIdx) {
 		t.Fatalf("skill list should separate delete action from standard actions:\n%s", list)
+	}
+}
+
+func TestRenderSkillList_UsesNeutralDeleteKeyForUnmanagedSelection(t *testing.T) {
+	m := testModel()
+	m.skills[0].Flags = []reconcile.StatusFlag{reconcile.StatusUnmanaged}
+	m.applyFilter()
+
+	list := m.renderSkillList(40, 12)
+	if !strings.Contains(list, paneFooterKeyStyle.Render("D")+" "+dimStyle.Render("delete repo copy")) {
+		t.Fatalf("delete row should keep a neutral key when delete is unavailable:\n%s", list)
 	}
 }
 
@@ -2152,7 +2166,7 @@ func TestRenderScopeInfoPanel_UserModeHighlightsImportWhenCandidatesExist(t *tes
 	m.userHintCount = 1
 
 	scope := m.renderScopeInfoPanel(40, 10)
-	if !strings.Contains(scope, footerKeyStyle.Render("i")+" "+statusInfoStyle.Render("import")) {
+	if !strings.Contains(scope, paneFooterInfoKeyStyle.Render("i")+" "+dimStyle.Render("import")) {
 		t.Fatalf("user utilities should highlight import when candidates exist:\n%s", scope)
 	}
 }
@@ -2218,7 +2232,7 @@ func TestRenderScopeInfoPanel_HighlightsSyncWhenAttentionNeeded(t *testing.T) {
 	plain := m.renderScopeInfoPanel(40, 10)
 	m.syncAttention = true
 	highlighted := m.renderScopeInfoPanel(40, 10)
-	if !strings.Contains(highlighted, "s sync repo *") {
+	if !strings.Contains(highlighted, paneFooterWarningKeyStyle.Render("s")+" "+dimStyle.Render("sync repo *")) {
 		t.Fatalf("highlighted scope panel missing sync row:\n%s", highlighted)
 	}
 	if strings.Contains(plain, "sync repo *") {
@@ -2554,6 +2568,9 @@ func TestImport_PaneFooterShowsImportActions(t *testing.T) {
 			t.Errorf("pane footer missing %q:\n%s", label, pane)
 		}
 	}
+	if !strings.Contains(pane, paneFooterAvailableKeyStyle.Render("enter")+" "+dimStyle.Render("import")) {
+		t.Fatalf("import pane should color only the key for ready actions:\n%s", pane)
+	}
 }
 
 func TestImport_PaneFooterShowsBrowseActions(t *testing.T) {
@@ -2568,6 +2585,9 @@ func TestImport_PaneFooterShowsBrowseActions(t *testing.T) {
 			t.Errorf("pane footer missing %q:\n%s", label, pane)
 		}
 	}
+	if !strings.Contains(pane, paneFooterAvailableKeyStyle.Render("s")+" "+dimStyle.Render("scan here")) {
+		t.Fatalf("browse mode should color only the key for scan actions:\n%s", pane)
+	}
 }
 
 func TestImport_PaneFooterShowsBrowseWhenEmpty(t *testing.T) {
@@ -2580,6 +2600,9 @@ func TestImport_PaneFooterShowsBrowseWhenEmpty(t *testing.T) {
 	}
 	if !strings.Contains(pane, "browse") {
 		t.Errorf("should show browse even with no candidates:\n%s", pane)
+	}
+	if !strings.Contains(pane, paneFooterAvailableKeyStyle.Render("b")+" "+dimStyle.Render("browse")) {
+		t.Fatalf("browse action should color only the key when available:\n%s", pane)
 	}
 }
 

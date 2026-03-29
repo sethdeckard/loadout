@@ -228,10 +228,16 @@ func renderFooterKeys(width int, keys []struct{ key, label string }, message str
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func renderInlineActions(actions []struct{ key, label string }) string {
+type paneAction struct {
+	key      string
+	label    string
+	keyStyle lipgloss.Style
+}
+
+func renderInlineActions(actions []paneAction) string {
 	var parts []string
 	for _, a := range actions {
-		parts = append(parts, paneFooterKeyStyle.Render(a.key)+" "+paneFooterActionStyle.Render(a.label))
+		parts = append(parts, a.keyStyle.Render(a.key)+" "+dimStyle.Render(a.label))
 	}
 	return strings.Join(parts, "  ")
 }
@@ -630,18 +636,20 @@ func (m Model) renderScopeInfoPanel(width, height int) string {
 	b.WriteString(paneHeaderStyle.Render("Utilities"))
 	b.WriteString("\n\n")
 
-	importLabel := dimStyle.Render("import")
+	importKeyStyle := paneFooterKeyStyle
 	if (m.inProjectMode() && m.projectHintCount > 0) || (!m.inProjectMode() && m.userHintCount > 0) {
-		importLabel = statusInfoStyle.Render("import")
+		importKeyStyle = paneFooterInfoKeyStyle
 	}
-	syncLabel := dimStyle.Render("sync repo")
+	syncKeyStyle := paneFooterKeyStyle
+	syncLabel := "sync repo"
 	if m.syncAttention {
-		syncLabel = statusWarnStyle.Render("sync repo *")
+		syncKeyStyle = paneFooterWarningKeyStyle
+		syncLabel = "sync repo *"
 	}
 	if m.inProjectMode() {
-		b.WriteString(footerKeyStyle.Render("s") + " " + syncLabel + "\n")
-		b.WriteString(footerKeyStyle.Render("d") + " " + dimStyle.Render("doctor") + "\n")
-		b.WriteString(footerKeyStyle.Render("i") + " " + importLabel)
+		b.WriteString(syncKeyStyle.Render("s") + " " + dimStyle.Render(syncLabel) + "\n")
+		b.WriteString(paneFooterKeyStyle.Render("d") + " " + dimStyle.Render("doctor") + "\n")
+		b.WriteString(importKeyStyle.Render("i") + " " + dimStyle.Render("import"))
 		if m.projectHintCount > 0 {
 			b.WriteString("\n")
 			b.WriteString(statusInfoStyle.Render(fmt.Sprintf("Untracked skills: %d ready", m.projectHintCount)))
@@ -649,9 +657,9 @@ func (m Model) renderScopeInfoPanel(width, height int) string {
 		return clipWrappedContent(b.String(), width, height)
 	}
 
-	b.WriteString(footerKeyStyle.Render("s") + " " + syncLabel + "\n")
-	b.WriteString(footerKeyStyle.Render("d") + " " + dimStyle.Render("doctor") + "\n")
-	b.WriteString(footerKeyStyle.Render("i") + " " + importLabel)
+	b.WriteString(syncKeyStyle.Render("s") + " " + dimStyle.Render(syncLabel) + "\n")
+	b.WriteString(paneFooterKeyStyle.Render("d") + " " + dimStyle.Render("doctor") + "\n")
+	b.WriteString(importKeyStyle.Render("i") + " " + dimStyle.Render("import"))
 	return clipWrappedContent(b.String(), width, height)
 }
 
@@ -962,7 +970,7 @@ func (m Model) paneFooterActionLines(rows []targetRow, project bool) []string {
 	for _, row := range rows {
 		if row.supported {
 			supportedCount++
-			lines = append(lines, paneFooterKeyStyle.Render(row.key)+" "+paneFooterActionStyle.Render(row.actionLabel))
+			lines = append(lines, paneFooterAvailableKeyStyle.Render(row.key)+" "+dimStyle.Render(row.actionLabel))
 			continue
 		}
 
@@ -971,15 +979,28 @@ func (m Model) paneFooterActionLines(rows []targetRow, project bool) []string {
 	bulkLabel, bulkEnabled := m.bulkActionState(project)
 	lines = append(lines, m.bulkActionLine(supportedCount > 1 && bulkEnabled, bulkLabel))
 	lines = append(lines, dimStyle.Render(strings.Repeat("─", 12)))
-	lines = append(lines, paneFooterKeyStyle.Render("D")+" "+paneFooterDestructiveStyle.Render("delete repo copy"))
+	lines = append(lines, m.deleteActionLine())
 	return lines
 }
 
 func (m Model) bulkActionLine(enabled bool, label string) string {
 	if enabled {
-		return paneFooterKeyStyle.Render("a") + " " + paneFooterActionStyle.Render(label)
+		return paneFooterAvailableKeyStyle.Render("a") + " " + dimStyle.Render(label)
 	}
 	return paneFooterKeyStyle.Render("a") + " " + dimStyle.Render(actionLabelNA(label))
+}
+
+func (m Model) deleteActionEnabled() bool {
+	sel := m.selectedSkill()
+	return sel != nil && !m.selectedSkillIsUnmanaged()
+}
+
+func (m Model) deleteActionLine() string {
+	keyStyle := paneFooterKeyStyle
+	if m.deleteActionEnabled() {
+		keyStyle = paneFooterDestructiveKeyStyle
+	}
+	return keyStyle.Render("D") + " " + dimStyle.Render("delete repo copy")
 }
 
 func (m Model) bulkActionState(project bool) (string, bool) {
@@ -1208,31 +1229,34 @@ func (m Model) renderImportListPane(width, height int) string {
 
 func (m Model) renderImportPaneFooter() string {
 	if m.importBrowsing {
-		row1 := renderInlineActions([]struct{ key, label string }{
-			{"enter", "open"}, {"backspace", "up"},
+		row1 := renderInlineActions([]paneAction{
+			{"enter", "open", paneFooterAvailableKeyStyle},
+			{"backspace", "up", paneFooterAvailableKeyStyle},
 		})
-		row2 := renderInlineActions([]struct{ key, label string }{
-			{"s", "scan here"},
+		row2 := renderInlineActions([]paneAction{
+			{"s", "scan here", paneFooterAvailableKeyStyle},
 		})
 		return row1 + "\n" + row2
 	}
 
 	if !m.loading && len(m.imports) > 0 {
-		row1 := renderInlineActions([]struct{ key, label string }{
-			{"enter", "import"}, {"A", "import all"},
+		row1 := renderInlineActions([]paneAction{
+			{"enter", "import", paneFooterAvailableKeyStyle},
+			{"A", "import all", paneFooterAvailableKeyStyle},
 		})
 		commitLabel := "auto-commit (OFF)"
 		if m.importCommit {
 			commitLabel = "auto-commit (ON)"
 		}
-		row2 := renderInlineActions([]struct{ key, label string }{
-			{"b", "browse"}, {"c", commitLabel},
+		row2 := renderInlineActions([]paneAction{
+			{"b", "browse", paneFooterAvailableKeyStyle},
+			{"c", commitLabel, paneFooterAvailableKeyStyle},
 		})
 		return row1 + "\n" + row2
 	}
 
-	return renderInlineActions([]struct{ key, label string }{
-		{"b", "browse"},
+	return renderInlineActions([]paneAction{
+		{"b", "browse", paneFooterAvailableKeyStyle},
 	})
 }
 

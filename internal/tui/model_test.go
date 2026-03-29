@@ -506,6 +506,20 @@ func TestRenderSkillList_ShowsUppercaseDeleteAction(t *testing.T) {
 	}
 }
 
+func TestRenderSkillList_HidesActionsWhenEmpty(t *testing.T) {
+	m := testModel()
+	m.skills = nil
+	m.applyFilter()
+
+	list := m.renderSkillList(40, 12)
+	if !strings.Contains(list, "No skills found") {
+		t.Fatalf("empty skill list should show empty state:\n%s", list)
+	}
+	if strings.Contains(list, "equip all") || strings.Contains(list, "delete repo copy") {
+		t.Fatalf("empty skill list should hide pane actions:\n%s", list)
+	}
+}
+
 func TestRenderSkillList_KeepsCursorVisibleWhenPaged(t *testing.T) {
 	m := testModel()
 	addTestSkills(&m, 24)
@@ -785,6 +799,22 @@ func TestRenderProjectScopeList_IncludesProjectActions(t *testing.T) {
 	}
 	if strings.Contains(list, "import") {
 		t.Fatalf("project list should not show standing import hint without ready skills:\n%s", list)
+	}
+}
+
+func TestRenderProjectScopeList_HidesActionsWhenEmpty(t *testing.T) {
+	m := testModel()
+	m.detectedProject = testProject
+	m.projectRoot = testProject
+	m.skills = nil
+	m.applyFilter()
+
+	list := m.renderSkillList(40, 12)
+	if !strings.Contains(list, "No skills found") {
+		t.Fatalf("empty project list should show empty state:\n%s", list)
+	}
+	if strings.Contains(list, "equip all") || strings.Contains(list, "delete repo copy") {
+		t.Fatalf("empty project list should hide pane actions:\n%s", list)
 	}
 }
 

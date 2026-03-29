@@ -382,7 +382,7 @@ func (m Model) renderSkillList(width, height int) string {
 
 	if len(m.filtered) == 0 {
 		b.WriteString(dimStyle.Render("No skills found"))
-		return m.renderListPaneWithFooter(b.String(), m.renderPaneFooterActions(m.inProjectMode()), width, height)
+		return clipWrappedContent(b.String(), width, height)
 	}
 
 	start, end := windowRange(len(m.filtered), m.skillListVisibleItems(height), m.cursor)

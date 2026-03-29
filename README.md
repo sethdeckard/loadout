@@ -24,6 +24,8 @@ go install github.com/sethdeckard/loadout/cmd/loadout@latest
 
 ## Quick Start
 
+Looking for workflow-oriented docs instead of reference material? See [docs/guides.md](docs/guides.md) for practical guides on importing existing skills, using `loadout-smith`, and choosing the right creation path.
+
 ### TUI
 
 ```bash
@@ -175,6 +177,8 @@ Each skill lives in `skills/<name>/`. The `skill.json` in that directory must us
 Skills can include subdirectories with scripts, references, templates, and other assets. Extra files are preserved through both import and install — only `SKILL.md` is modified (frontmatter is added on install).
 
 The example repo also includes `loadout-smith`, a skill that teaches agents how to author new Loadout-formatted skills directly in the repo — no import step needed.
+
+If you want `loadout-smith` without adopting the example repo as your main skills repo, either copy `skills/loadout-smith/` into your own managed repo or clone the example repo locally and import `loadout-smith` into user scope from Loadout's import screen. See [docs/guides.md](docs/guides.md) for the workflow details.
 
 ### skill.json
 

@@ -182,6 +182,16 @@ func (m Model) selectedSkillIsUnmanaged() bool {
 	return false
 }
 
+func (m Model) isTrulyEmpty() bool {
+	if m.loading || m.filtering || m.filter != "" || len(m.skills) != 0 {
+		return false
+	}
+	if m.inProjectMode() {
+		return m.projectHintCount == 0
+	}
+	return m.userHintCount == 0
+}
+
 func (m *Model) blockUnmanagedSelectionAction() bool {
 	sel := m.selectedSkill()
 	if sel == nil {

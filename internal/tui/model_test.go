@@ -2050,6 +2050,111 @@ func TestRenderDetails_UnmanagedShowsImportBanner(t *testing.T) {
 	}
 }
 
+func TestModel_IsTrulyEmpty_UserScope(t *testing.T) {
+	m := testModel()
+	m.skills = nil
+	m.applyFilter()
+
+	if !m.isTrulyEmpty() {
+		t.Fatal("expected true empty user scope")
+	}
+}
+
+func TestModel_IsTrulyEmpty_ProjectScope(t *testing.T) {
+	m := testModel()
+	m.skills = nil
+	m.projectRoot = testProject
+	m.applyFilter()
+
+	if !m.isTrulyEmpty() {
+		t.Fatal("expected true empty project scope")
+	}
+}
+
+func TestModel_IsTrulyEmpty_FilteredEmptyFalse(t *testing.T) {
+	m := testModel()
+	m.filter = "zzz"
+	m.applyFilter()
+
+	if m.isTrulyEmpty() {
+		t.Fatal("filtered-empty state should not count as truly empty")
+	}
+}
+
+func TestModel_IsTrulyEmpty_LoadingFalse(t *testing.T) {
+	m := testModel()
+	m.skills = nil
+	m.loading = true
+	m.applyFilter()
+
+	if m.isTrulyEmpty() {
+		t.Fatal("loading state should not count as truly empty")
+	}
+}
+
+func TestModel_IsTrulyEmpty_UserHintsFalse(t *testing.T) {
+	m := testModel()
+	m.skills = nil
+	m.userHintCount = 1
+	m.applyFilter()
+
+	if m.isTrulyEmpty() {
+		t.Fatal("user import hints should prevent truly empty state")
+	}
+}
+
+func TestModel_IsTrulyEmpty_ProjectHintsFalse(t *testing.T) {
+	m := testModel()
+	m.skills = nil
+	m.projectRoot = testProject
+	m.projectHintCount = 1
+	m.applyFilter()
+
+	if m.isTrulyEmpty() {
+		t.Fatal("project import hints should prevent truly empty state")
+	}
+}
+
+func TestRenderDetails_TrueEmptyShowsLogoAndGuide(t *testing.T) {
+	m := testModel()
+	m.skills = nil
+	m.applyFilter()
+
+	output := m.renderDetails(120, 20)
+	if !strings.Contains(output, "Skill Manager for Claude and Codex") {
+		t.Fatalf("true empty details should show logo:\n%s", output)
+	}
+	if !strings.Contains(output, "No managed or unmanaged skills were found in this scope.") {
+		t.Fatalf("true empty details should show onboarding copy:\n%s", output)
+	}
+	if !strings.Contains(output, "https://github.com/sethdeckard/loadout/blob/main/docs/guides.md") {
+		t.Fatalf("true empty details should show guide URL:\n%s", output)
+	}
+}
+
+func TestRenderDetails_FilteredEmptyDoesNotShowGuideBlock(t *testing.T) {
+	m := testModel()
+	m.filter = "zzz"
+	m.applyFilter()
+
+	output := m.renderDetails(60, 20)
+	if strings.Contains(output, "Skill Manager for Claude and Codex") || strings.Contains(output, "https://github.com/sethdeckard/loadout/blob/main/docs/guides.md") {
+		t.Fatalf("filtered-empty details should not show true empty-state block:\n%s", output)
+	}
+}
+
+func TestRenderDetails_HintAvailableDoesNotShowGuideBlock(t *testing.T) {
+	m := testModel()
+	m.skills = nil
+	m.userHintCount = 1
+	m.applyFilter()
+
+	output := m.renderDetails(60, 20)
+	if strings.Contains(output, "Skill Manager for Claude and Codex") || strings.Contains(output, "https://github.com/sethdeckard/loadout/blob/main/docs/guides.md") {
+		t.Fatalf("hint-available details should not show true empty-state block:\n%s", output)
+	}
+}
+
 func TestModel_ProjectModeView(t *testing.T) {
 	m := testModel()
 	m.detectedProject = testProject

@@ -491,6 +491,17 @@ func (m Model) renderDetails(width, height int) string {
 
 	sel := m.selectedSkill()
 	if sel == nil {
+		if m.isTrulyEmpty() {
+			b.WriteString(dimStyle.Render(Logo))
+			b.WriteString("\n\n")
+			b.WriteString(normalStyle.Render("No managed or unmanaged skills were found in this scope.") + "\n")
+			b.WriteString(dimStyle.Render("Press i to import a skill or d to run doctor.") + "\n")
+			const guidesURL = "https://github.com/sethdeckard/loadout/blob/main/docs/guides.md"
+			b.WriteString("\033]8;;" + guidesURL + "\033\\")
+			b.WriteString(guidesURL)
+			b.WriteString("\033]8;;\033\\")
+			return clipWrappedContent(b.String(), width, height)
+		}
 		b.WriteString(dimStyle.Render("Select a skill to view details"))
 		return clipWrappedContent(b.String(), width, height)
 	}

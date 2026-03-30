@@ -11,6 +11,7 @@ Use this when you already have skills living outside your Loadout-managed repo a
 - Copies an existing local skill directory into your repo under `skills/<name>/`
 - Preserves declared metadata from `skill.json` when present
 - Infers metadata from `SKILL.md` and the source root when `skill.json` is missing
+- Rejects source trees that contain symlinks
 - Refuses imports when the same skill appears with conflicting metadata across Claude and Codex roots
 
 After import, the repo copy becomes the source of truth. Edit the skill there, not in the installed copy.

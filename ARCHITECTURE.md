@@ -141,8 +141,8 @@ Install behavior:
 - verify target support
 - copy the skill directory into a temp dir on the target filesystem
 - transform `SKILL.md` by prepending generated YAML frontmatter
+- write the `.loadout` marker into the staging directory
 - atomically rename into place
-- write a `.loadout` marker file containing repo commit and install timestamp
 
 Remove behavior deletes the installed directory if present.
 
@@ -320,7 +320,7 @@ User equip:
 2. The service loads the requested skill from the registry.
 3. The service verifies the skill supports the requested target.
 4. The service resolves the configured target root.
-5. `install.Install` copies the repo content, transforms `SKILL.md`, and writes a `.loadout` marker.
+5. `install.Install` copies the repo content, transforms `SKILL.md`, writes the `.loadout` marker into staging, and atomically renames the completed directory into place.
 
 User unequip:
 

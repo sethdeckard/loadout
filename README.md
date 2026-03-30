@@ -22,6 +22,12 @@ brew install sethdeckard/tap/loadout
 go install github.com/sethdeckard/loadout/cmd/loadout@latest
 ```
 
+## Platform Support
+
+Loadout is primarily supported on macOS and Linux.
+
+Windows compatibility is not currently guaranteed and may drift. If the default config path or default Claude/Codex target paths do not match your environment, configure custom paths during `loadout init` or by editing the config file directly.
+
 ## Quick Start
 
 Looking for workflow-oriented docs instead of reference material? See [docs/guides.md](docs/guides.md) for practical guides on importing existing skills, using `loadout-smith`, and choosing the right creation path.
@@ -119,6 +125,7 @@ In project scope, ready project-local skills may already be visible in the main 
 - If the source only has `SKILL.md`, Loadout generates `skill.json` from frontmatter, markdown headings, and the source target root when possible.
 - Imported skills are written to `skills/<name>/`, where `name` is the canonical identifier from `skill.json` or the inferred slug when `skill.json` is missing.
 - Import strips install-time frontmatter from `SKILL.md` and removes any `.loadout` marker from the copied repo version.
+- Import rejects source trees that contain symlinks.
 - `--commit` creates a commit for the imported skill only.
 
 If the same skill appears in both Claude and Codex roots with conflicting metadata, Loadout blocks the import instead of guessing.
@@ -230,4 +237,4 @@ make vet          # Static analysis
 make lint         # Run golangci-lint
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for design details and [AGENTS.md](AGENTS.md) for coding conventions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contributor setup, [ARCHITECTURE.md](ARCHITECTURE.md) for design details, and [AGENTS.md](AGENTS.md) for coding conventions.

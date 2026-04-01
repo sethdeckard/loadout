@@ -68,6 +68,15 @@ func (m Model) importContentHeight() int {
 	return contentHeightForPane(bodyHeight, borderStyle)
 }
 
+func (m Model) importPreviewContentHeight() int {
+	bodyHeight := m.mainBodyHeight()
+	width := max(1, m.width-4)
+	if width < importSplitWidth {
+		return max(1, contentHeightForPane(bodyHeight, borderStyle)-contentHeightForPane(bodyHeight, borderStyle)/2-1)
+	}
+	return contentHeightForPane(bodyHeight, borderStyle)
+}
+
 func (m Model) importListVisibleItems(height int) int {
 	bodyHeight := max(1, height-countLines(m.renderImportPaneFooter()))
 	if m.importBrowsing {

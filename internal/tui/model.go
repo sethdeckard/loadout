@@ -88,28 +88,29 @@ type Model struct {
 	syncAttention    bool
 
 	// UI state
-	cursor          int
-	filter          string
-	filtering       bool
-	showHelp        bool
-	helpScroll      int
-	status          string
-	err             error
-	loading         bool
-	focusPane       paneID // which pane has focus (default: paneSkills)
-	detailScroll    int    // vertical scroll offset for details pane
-	screen          screenID
-	importCommit    bool
-	settings        settingsForm
-	settingsField   settingsField
-	settingsEditing bool
-	commitPrompt    *commitPromptState
-	deleteSkillName domain.SkillName
-	deleteInput     string
-	deleteCommit    bool
-	deleteReady     bool
-	deleteBlockers  []string
-	bulkImport      *bulkImportState
+	cursor              int
+	filter              string
+	filtering           bool
+	showHelp            bool
+	helpScroll          int
+	status              string
+	err                 error
+	loading             bool
+	focusPane           paneID // which pane has focus (default: paneSkills)
+	detailScroll        int    // vertical scroll offset for details pane
+	importPreviewScroll int    // vertical scroll offset for import preview pane
+	screen              screenID
+	importCommit        bool
+	settings            settingsForm
+	settingsField       settingsField
+	settingsEditing     bool
+	commitPrompt        *commitPromptState
+	deleteSkillName     domain.SkillName
+	deleteInput         string
+	deleteCommit        bool
+	deleteReady         bool
+	deleteBlockers      []string
+	bulkImport          *bulkImportState
 
 	// Directory browser state
 	importBrowsing   bool     // true = directory browser active
@@ -277,6 +278,7 @@ func (m *Model) openImport() tea.Cmd {
 	m.screen = screenImport
 	m.showHelp = false
 	m.filtering = false
+	m.focusPane = paneSkills
 	m.importCommit = m.svc.Config.RepoActions.ImportAutoCommit
 	m.resetImportState()
 	return m.startImportForCurrentScope()
@@ -303,6 +305,7 @@ func (m *Model) resetImportState() {
 	m.importCustomDir = ""
 	m.imports = nil
 	m.importPreview = nil
+	m.importPreviewScroll = 0
 	m.browseDir = ""
 	m.browseCursor = 0
 	m.browseDirEntries = nil

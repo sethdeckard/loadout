@@ -148,6 +148,7 @@ func (m Model) renderFooter() string {
 		}
 		keys := []struct{ key, label string }{
 			{"j/k", "move"},
+			{"h/l", "focus"},
 			{"ctrl+u/d", "page"},
 			{"tab", toggleScopeLabel(m.inProjectMode())},
 			{"esc", "close"},
@@ -462,6 +463,12 @@ func skillHasFlag(v app.SkillView, flag reconcile.StatusFlag) bool {
 	return false
 }
 
+func scrollIndicator(arrow string) string {
+	return dimStyle.Render(arrow+"  ") +
+		footerKeyStyle.Render("ctrl+u/d") + dimStyle.Render(" page  ") +
+		footerKeyStyle.Render("g/G") + dimStyle.Render(" top/bottom")
+}
+
 func truncateToWindow(content string, height, offset int) (visible string, clampedOffset int, moreAbove bool, moreBelow bool) {
 	lines := strings.Split(content, "\n")
 	total := len(lines)
@@ -578,11 +585,11 @@ func (m Model) renderDetails(width, height int) string {
 
 	var result strings.Builder
 	if hasAbove {
-		result.WriteString(dimStyle.Render("▲") + "\n")
+		result.WriteString(scrollIndicator("▲") + "\n")
 	}
 	result.WriteString(visible)
 	if moreBelow {
-		result.WriteString("\n" + dimStyle.Render("▼"))
+		result.WriteString("\n" + scrollIndicator("▼"))
 	}
 
 	return result.String()
@@ -1134,10 +1141,17 @@ func (m Model) renderImport(height int) string {
 		rightW = 30
 		leftW = max(20, w-rightW-2)
 	}
-	leftContentHeight := contentHeightForPane(height, borderStyle)
-	rightContentHeight := contentHeightForPane(height, borderStyle)
-	left := borderStyle.Width(leftW).Height(leftContentHeight).Render(m.renderImportListPane(leftW, leftContentHeight))
-	right := borderStyle.Width(rightW).Height(rightContentHeight).Render(m.renderImportPreviewPane(rightW, rightContentHeight))
+	leftBorder := borderStyle
+	rightBorder := borderStyle
+	if m.focusPane == paneSkills {
+		leftBorder = focusBorderStyle
+	} else {
+		rightBorder = focusBorderStyle
+	}
+	leftContentHeight := contentHeightForPane(height, leftBorder)
+	rightContentHeight := contentHeightForPane(height, rightBorder)
+	left := leftBorder.Width(leftW).Height(leftContentHeight).Render(m.renderImportListPane(leftW, leftContentHeight))
+	right := rightBorder.Width(rightW).Height(rightContentHeight).Render(m.renderImportPreviewPane(rightW, rightContentHeight))
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 }
 
@@ -1327,7 +1341,42 @@ func (m Model) renderImportPreviewPane(width, height int) string {
 			b.WriteString(normalStyle.Render(line) + "\n")
 		}
 	}
-	return clipWrappedContent(b.String(), width, height)
+
+	content := wrapContent(b.String(), width)
+	lines := strings.Split(content, "\n")
+	totalLines := len(lines)
+
+	if totalLines <= height {
+		return clipContent(content, height)
+	}
+
+	visibleHeight := height
+	hasAbove := m.importPreviewScroll > 0
+	if hasAbove {
+		visibleHeight--
+	}
+	visibleHeight--
+	if visibleHeight < 1 {
+		visibleHeight = 1
+	}
+
+	visible, _, _, moreBelow := truncateToWindow(content, visibleHeight, m.importPreviewScroll)
+
+	if !moreBelow && hasAbove {
+		visibleHeight++
+		visible, _, _, moreBelow = truncateToWindow(content, visibleHeight, m.importPreviewScroll)
+	}
+
+	var result strings.Builder
+	if hasAbove {
+		result.WriteString(scrollIndicator("▲") + "\n")
+	}
+	result.WriteString(visible)
+	if moreBelow {
+		result.WriteString("\n" + scrollIndicator("▼"))
+	}
+
+	return result.String()
 }
 
 func formatTargets(targets []domain.Target) string {

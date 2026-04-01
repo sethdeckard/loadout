@@ -93,6 +93,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.importPreview = &msg.preview
+		m.importPreviewScroll = 0
 		return m, nil
 
 	case toggleResultMsg:
@@ -703,6 +704,10 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpScroll = max(0, m.helpScroll-1)
 			return m, nil
 		}
+		if m.focusPane == paneDetails {
+			m.importPreviewScroll = max(0, m.importPreviewScroll-1)
+			return m, nil
+		}
 		if m.cursor > 0 {
 			return m, m.moveImportCursor(m.cursor - 1)
 		}
@@ -710,6 +715,10 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyDown:
 		if m.showHelp {
 			m.helpScroll++
+			return m, nil
+		}
+		if m.focusPane == paneDetails {
+			m.importPreviewScroll++
 			return m, nil
 		}
 		if m.cursor < len(m.imports)-1 {
@@ -721,10 +730,18 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpScroll = 0
 			return m, nil
 		}
+		if m.focusPane == paneDetails {
+			m.importPreviewScroll = 0
+			return m, nil
+		}
 		return m, m.moveImportCursor(0)
 	case keyBottom:
 		if m.showHelp {
 			m.helpScroll = 999999
+			return m, nil
+		}
+		if m.focusPane == paneDetails {
+			m.importPreviewScroll = 999999
 			return m, nil
 		}
 		return m, m.moveImportCursor(max(0, len(m.imports)-1))
@@ -733,13 +750,27 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpScroll = max(0, m.helpScroll-pageStep(m.mainBodyHeight()))
 			return m, nil
 		}
+		if m.focusPane == paneDetails {
+			m.importPreviewScroll = max(0, m.importPreviewScroll-pageStep(m.importPreviewContentHeight()))
+			return m, nil
+		}
 		return m, m.moveImportCursor(m.cursor - pageStep(m.importListVisibleItems(m.importContentHeight())))
 	case keyPageDown:
 		if m.showHelp {
 			m.helpScroll += pageStep(m.mainBodyHeight())
 			return m, nil
 		}
+		if m.focusPane == paneDetails {
+			m.importPreviewScroll += pageStep(m.importPreviewContentHeight())
+			return m, nil
+		}
 		return m, m.moveImportCursor(m.cursor + pageStep(m.importListVisibleItems(m.importContentHeight())))
+	case keyLeft:
+		m.focusPane = paneSkills
+		return m, nil
+	case keyRight:
+		m.focusPane = paneDetails
+		return m, nil
 	case keyHelp:
 		m.showHelp = !m.showHelp
 		m.helpScroll = 0

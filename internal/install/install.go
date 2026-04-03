@@ -120,7 +120,8 @@ func transformSkillMD(stagingDir string, skill domain.Skill, target domain.Targe
 	}
 
 	fm := skillmd.BuildFrontmatter(skill, target)
-	content := fmt.Sprintf("---\n%s---\n\n%s", fm, string(body))
+	stripped := skillmd.StripFrontmatter(string(body))
+	content := fmt.Sprintf("---\n%s---\n\n%s", fm, stripped)
 
 	return os.WriteFile(mdPath, []byte(content), 0o644)
 }

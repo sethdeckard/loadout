@@ -59,7 +59,7 @@ func TestInstallNew(t *testing.T) {
 	if !strings.Contains(content, "name: test-skill") {
 		t.Error("frontmatter should contain name")
 	}
-	if !strings.Contains(content, "description: A test skill.") {
+	if !strings.Contains(content, `description: "A test skill."`) {
 		t.Error("frontmatter should contain description")
 	}
 	if !strings.Contains(content, "# Test") {
@@ -125,7 +125,7 @@ func TestInstallClaudeFrontmatter(t *testing.T) {
 	md, _ := os.ReadFile(filepath.Join(targetRoot, "test-skill", "SKILL.md"))
 	content := string(md)
 
-	if !strings.Contains(content, "allowed-tools: Read, Grep") {
+	if !strings.Contains(content, `allowed-tools: "Read, Grep"`) {
 		t.Error("should include allowed-tools from claude config")
 	}
 	if !strings.Contains(content, "disable-model-invocation: true") {
@@ -157,7 +157,7 @@ func TestInstallCodexFrontmatter(t *testing.T) {
 	if !strings.Contains(content, "name: test-skill") {
 		t.Error("should include name")
 	}
-	if !strings.Contains(content, "description: A test skill.") {
+	if !strings.Contains(content, `description: "A test skill."`) {
 		t.Error("should include description")
 	}
 	// Claude-specific fields should NOT appear in codex install
@@ -475,5 +475,61 @@ func TestScanManaged_NonexistentDir(t *testing.T) {
 	ids := ScanManaged("/nonexistent/path")
 	if ids != nil {
 		t.Errorf("ScanManaged() = %v, want nil", ids)
+	}
+}
+
+func TestInstall_StripsExistingFrontmatter(t *testing.T) {
+	repo := setupTestRepo(t)
+	// Write SKILL.md with its own frontmatter block
+	mdPath := filepath.Join(repo, "skills", "test-skill", "SKILL.md")
+	src := "---\nname: test-skill\ndescription: \"original\"\n---\n\n# Test\n\nBody content.\n"
+	if err := os.WriteFile(mdPath, []byte(src), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+	if err := Install(repo, testSkill(), domain.TargetClaude, targetRoot, "abc123"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	md, _ := os.ReadFile(filepath.Join(targetRoot, "test-skill", "SKILL.md"))
+	content := string(md)
+
+	// Count lines that are exactly "---" — should be exactly 2 (one open, one close)
+	var delimCount int
+	for _, line := range strings.Split(content, "\n") {
+		if line == "---" {
+			delimCount++
+		}
+	}
+	if delimCount != 2 {
+		t.Errorf("expected exactly 2 frontmatter delimiters, got %d in:\n%s", delimCount, content)
+	}
+
+	if !strings.Contains(content, "# Test") {
+		t.Error("body should be preserved")
+	}
+	if !strings.Contains(content, "Body content.") {
+		t.Error("body content should be preserved")
+	}
+}
+
+func TestInstall_DescriptionWithColon(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	skill := testSkill()
+	skill.Description = "Does stuff. Conversational: analyzes things"
+
+	if err := Install(repo, skill, domain.TargetClaude, targetRoot, "abc123"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	md, _ := os.ReadFile(filepath.Join(targetRoot, "test-skill", "SKILL.md"))
+	content := string(md)
+
+	want := `description: "Does stuff. Conversational: analyzes things"`
+	if !strings.Contains(content, want) {
+		t.Errorf("expected line %q in:\n%s", want, content)
 	}
 }

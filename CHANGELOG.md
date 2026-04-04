@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0] - 2026-04-03
+
+### Features
+
+- Scroll hints show `ctrl+u/d` and `g/G` inline with scroll indicators in the details and import preview panes
+- Import preview pane is now scrollable with `h/l` focus switching and focus-aware border styling
+
+### Bug Fixes
+
+- YAML frontmatter values from skill.json are now double-quoted, fixing invalid YAML when descriptions contain colons or other special characters
+- Source SKILL.md frontmatter is stripped before prepending generated metadata, preventing duplicate frontmatter blocks in installed files
+
 ## [0.2.0] - 2026-03-29
 
 Improved TUI workflows for unmanaged skills, navigation, and first-run guidance.

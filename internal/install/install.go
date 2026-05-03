@@ -19,10 +19,12 @@ type Marker struct {
 	InstalledAt time.Time `json:"installed_at"`
 }
 
-// Install copies a skill from the repo into the target root directory.
-// Uses atomic rename: copies to temp dir first, then renames into place.
-// SKILL.md is transformed to include target-specific YAML frontmatter.
-func Install(repoPath string, skill domain.Skill, target domain.Target, targetRoot string, commit string) error {
+// Stage copies a skill from <repoPath>/<skill.Path> into destDir and rewrites
+// destDir/SKILL.md with target-specific YAML frontmatter. It does not write
+// the .loadout marker, does not perform atomic rename, and does not interact
+// with any target root. The caller decides where destDir is and whether/how
+// it becomes a final install or an archive subdirectory.
+func Stage(repoPath string, skill domain.Skill, target domain.Target, destDir string) error {
 	if !skill.SupportsTarget(target) {
 		return fmt.Errorf("%w: skill %q does not support target %q", domain.ErrUnsupportedTarget, skill.Name, target)
 	}
@@ -32,30 +34,38 @@ func Install(repoPath string, skill domain.Skill, target domain.Target, targetRo
 		return fmt.Errorf("%w: source directory %q does not exist", domain.ErrSkillNotFound, srcDir)
 	}
 
+	if err := fsx.CopyDir(srcDir, destDir); err != nil {
+		return fmt.Errorf("copy skill: %w", err)
+	}
+
+	if err := transformSkillMD(destDir, skill, target); err != nil {
+		return fmt.Errorf("transform SKILL.md: %w", err)
+	}
+
+	return nil
+}
+
+// Install copies a skill from the repo into the target root directory.
+// Uses atomic rename: stages to a temp dir on the same filesystem first,
+// writes the .loadout marker there, then renames into place.
+func Install(repoPath string, skill domain.Skill, target domain.Target, targetRoot string, commit string) error {
 	if err := fsx.EnsureDir(targetRoot); err != nil {
 		return fmt.Errorf("ensure target root: %w", err)
 	}
 
 	finalDir := filepath.Join(targetRoot, string(skill.Name))
 
-	// Copy to temp dir on same filesystem for atomic rename
 	tmpDir, err := os.MkdirTemp(targetRoot, ".tmp-install-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir) // cleanup on any failure path
+	defer os.RemoveAll(tmpDir)
 
 	stagingDir := filepath.Join(tmpDir, string(skill.Name))
-	if err := fsx.CopyDir(srcDir, stagingDir); err != nil {
-		return fmt.Errorf("copy skill: %w", err)
+	if err := Stage(repoPath, skill, target, stagingDir); err != nil {
+		return err
 	}
 
-	// Transform SKILL.md with target-specific frontmatter
-	if err := transformSkillMD(stagingDir, skill, target); err != nil {
-		return fmt.Errorf("transform SKILL.md: %w", err)
-	}
-
-	// Write .loadout marker into staging dir before rename so the operation is atomic
 	marker := Marker{
 		RepoCommit:  commit,
 		InstalledAt: time.Now().UTC().Truncate(time.Second),
@@ -68,7 +78,6 @@ func Install(repoPath string, skill domain.Skill, target domain.Target, targetRo
 		return fmt.Errorf("write marker: %w", err)
 	}
 
-	// Remove existing install if present — refuse to overwrite unmanaged directories
 	if fsx.DirExists(finalDir) {
 		if !HasMarker(skill.Name, targetRoot) {
 			return fmt.Errorf("%w: %s", domain.ErrUnmanagedDir, finalDir)
@@ -78,7 +87,6 @@ func Install(repoPath string, skill domain.Skill, target domain.Target, targetRo
 		}
 	}
 
-	// Atomic rename into place
 	if err := os.Rename(stagingDir, finalDir); err != nil {
 		return fmt.Errorf("rename into place: %w", err)
 	}

@@ -109,6 +109,7 @@ make lint              # Run golangci-lint (includes formatting checks)
 | `loadout equip <name> --target claude` | Enable + install |
 | `loadout unequip <name> --target codex` | Disable + remove |
 | `loadout import <path>` | Import local skill into repo |
+| `loadout share <name>` | Package skill into a portable .tar.gz |
 | `loadout delete <name>` | Delete skill from repo |
 | `loadout sync` | Sync repo and refresh outdated managed installs |
 | `loadout doctor` | Health check |

@@ -514,6 +514,60 @@ func TestInstall_StripsExistingFrontmatter(t *testing.T) {
 	}
 }
 
+func TestStage_NoMarker(t *testing.T) {
+	repo := setupTestRepo(t)
+	dest := filepath.Join(t.TempDir(), "staged")
+
+	if err := Stage(repo, testSkill(), domain.TargetClaude, dest); err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dest, ".loadout")); !os.IsNotExist(err) {
+		t.Errorf("Stage() output should not contain .loadout marker, got err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); err != nil {
+		t.Errorf("Stage() should produce SKILL.md, got err=%v", err)
+	}
+}
+
+func TestStage_RewritesFrontmatter(t *testing.T) {
+	repo := setupTestRepo(t)
+	dest := filepath.Join(t.TempDir(), "staged")
+
+	skill := testSkill()
+	skill.Claude = map[string]any{"allowed-tools": "Read"}
+
+	if err := Stage(repo, skill, domain.TargetClaude, dest); err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+
+	md, err := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read SKILL.md: %v", err)
+	}
+	content := string(md)
+	if !strings.Contains(content, "name: test-skill") {
+		t.Error("Stage() output should include frontmatter")
+	}
+	if !strings.Contains(content, `allowed-tools: "Read"`) {
+		t.Error("Stage() output should include claude metadata")
+	}
+}
+
+func TestStage_UnsupportedTarget(t *testing.T) {
+	repo := setupTestRepo(t)
+	skill := domain.Skill{
+		Name:    "test-skill",
+		Targets: []domain.Target{domain.TargetClaude},
+		Path:    "skills/test-skill",
+	}
+
+	err := Stage(repo, skill, domain.TargetCodex, filepath.Join(t.TempDir(), "staged"))
+	if !errors.Is(err, domain.ErrUnsupportedTarget) {
+		t.Errorf("Stage() error = %v, want ErrUnsupportedTarget", err)
+	}
+}
+
 func TestInstall_DescriptionWithColon(t *testing.T) {
 	repo := setupTestRepo(t)
 	targetRoot := filepath.Join(t.TempDir(), "skills")

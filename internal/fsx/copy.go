@@ -13,6 +13,14 @@ import (
 // CopyDir recursively copies src directory to dst.
 // dst must not already exist.
 func CopyDir(src, dst string) error {
+	return CopyDirFiltered(src, dst, nil)
+}
+
+// CopyDirFiltered recursively copies src directory to dst, omitting any path
+// for which skip returns true. The skip predicate receives the path relative
+// to src, with forward-slash separators. If skip is nil, every entry is
+// copied. dst must not already exist.
+func CopyDirFiltered(src, dst string, skip func(relPath string) bool) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return fmt.Errorf("copy dir: stat source: %w", err)
@@ -34,6 +42,14 @@ func CopyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
+
+		if skip != nil && rel != "." && skip(filepath.ToSlash(rel)) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
 		target := filepath.Join(dst, rel)
 
 		if d.Type()&fs.ModeSymlink != 0 {

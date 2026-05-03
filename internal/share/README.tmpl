@@ -1,0 +1,28 @@
+# {{ .Name }}
+
+{{ .Description }}
+
+## Install
+
+You do not need Loadout to use this skill -- pick whichever section below
+matches your setup. The Loadout flow is just a convenience for people who
+already manage their skills with it.
+{{ if .HasClaude }}
+### For Claude
+
+Copy the `claude-build/` directory to `~/.claude/skills/{{ .Name }}/`:
+
+    cp -R claude-build/ ~/.claude/skills/{{ .Name }}/
+{{ end }}{{ if .HasCodex }}
+### For Codex
+
+Copy the `codex-build/` directory to `~/.codex/skills/{{ .Name }}/`:
+
+    cp -R codex-build/ ~/.codex/skills/{{ .Name }}/
+{{ end }}
+### With Loadout (optional)
+
+If you use [Loadout](https://github.com/sethdeckard/loadout), import the
+`loadout-source/` directory into your shared skills repo:
+
+    loadout import loadout-source/

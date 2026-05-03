@@ -130,6 +130,27 @@ In project scope, ready project-local skills may already be visible in the main 
 
 If the same skill appears in both Claude and Codex roots with conflicting metadata, Loadout blocks the import instead of guessing.
 
+## Share
+
+`loadout share <name>` packages a single repo skill into a portable `.tar.gz` archive you can hand to someone else — no shared git repo required. The archive contains:
+
+- `claude-build/` — drop-in for `~/.claude/skills/<name>/`
+- `codex-build/` — drop-in for `~/.codex/skills/<name>/`
+- `loadout-source/` — for recipients who use Loadout themselves: `loadout import loadout-source/`
+- `README.md` — install instructions for all three flows
+
+Targets the skill does not declare in `skill.json` are omitted (a Claude-only skill produces no `codex-build/`). Marker files (`.loadout`) and OS junk (`.DS_Store`, `Thumbs.db`, `.git/`) are stripped.
+
+By default the archive is written to `./<name>.tar.gz`. Use `--out <path>` to choose a different file or directory:
+
+```bash
+loadout share trailhead-sketch                            # ./trailhead-sketch.tar.gz
+loadout share trailhead-sketch --out ~/Desktop/           # ~/Desktop/trailhead-sketch.tar.gz
+loadout share trailhead-sketch --out ~/build/skill.tgz    # exact path
+```
+
+If the output file already exists, share refuses to overwrite — delete or rename it first.
+
 ## Sync
 
 Press `s` in the TUI or run `loadout sync` from the command line.
@@ -160,6 +181,7 @@ Press `s` in the TUI or run `loadout sync` from the command line.
 | `loadout equip <name> --target <t>` | Install a skill for a target |
 | `loadout unequip <name> --target <t>` | Remove a skill from a target |
 | `loadout import <path>` | Import a local skill into the repo |
+| `loadout share <name>` | Package a skill into a portable .tar.gz |
 | `loadout delete <name>` | Delete a skill from the repo |
 | `loadout sync` | Sync repo and refresh managed installs |
 | `loadout doctor` | Health check |

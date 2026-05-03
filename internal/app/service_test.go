@@ -1510,3 +1510,103 @@ func findDoctorCheck(t *testing.T, report DoctorReport, name string) DoctorCheck
 	t.Fatalf("no %s check found", name)
 	return DoctorCheck{}
 }
+
+func TestShare_UnknownSkill(t *testing.T) {
+	svc, _ := setupTestEnv(t)
+	out := filepath.Join(t.TempDir(), "missing.tar.gz")
+
+	_, err := svc.Share("does-not-exist", out)
+	if !errors.Is(err, domain.ErrSkillNotFound) {
+		t.Fatalf("Share() error = %v, want ErrSkillNotFound", err)
+	}
+	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+		t.Errorf("output file should not exist on error, stat err=%v", statErr)
+	}
+}
+
+func TestShare_OutPathSemantics(t *testing.T) {
+	svc, _ := setupTestEnv(t)
+
+	tests := []struct {
+		name      string
+		outArg    func(t *testing.T) string
+		wantBase  string
+		wantInDir bool
+	}{
+		{
+			name:      "empty defaults to cwd",
+			outArg:    func(t *testing.T) string { return "" },
+			wantBase:  "test-skill.tar.gz",
+			wantInDir: false, // checked separately by chdir
+		},
+		{
+			name: "trailing slash treated as directory",
+			outArg: func(t *testing.T) string {
+				dir := t.TempDir()
+				return dir + string(filepath.Separator)
+			},
+			wantBase:  "test-skill.tar.gz",
+			wantInDir: true,
+		},
+		{
+			name: "existing directory writes inside",
+			outArg: func(t *testing.T) string {
+				return t.TempDir()
+			},
+			wantBase:  "test-skill.tar.gz",
+			wantInDir: true,
+		},
+		{
+			name: "verbatim file path",
+			outArg: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "custom-name.tgz")
+			},
+			wantBase:  "custom-name.tgz",
+			wantInDir: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outArg := tt.outArg(t)
+
+			if tt.name == "empty defaults to cwd" {
+				cwd := t.TempDir()
+				prev, err := os.Getwd()
+				if err != nil {
+					t.Fatalf("getwd: %v", err)
+				}
+				if err := os.Chdir(cwd); err != nil {
+					t.Fatalf("chdir: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chdir(prev) })
+			}
+
+			path, err := svc.Share("test-skill", outArg)
+			if err != nil {
+				t.Fatalf("Share() error = %v", err)
+			}
+			if filepath.Base(path) != tt.wantBase {
+				t.Errorf("base(path) = %q, want %q", filepath.Base(path), tt.wantBase)
+			}
+			if tt.wantInDir {
+				if filepath.Dir(path) != strings.TrimRight(outArg, string(filepath.Separator)) {
+					t.Errorf("dir(path) = %q, want %q", filepath.Dir(path), strings.TrimRight(outArg, string(filepath.Separator)))
+				}
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Errorf("archive missing at returned path: %v", err)
+			}
+		})
+	}
+}
+
+func TestShare_MissingParentDir(t *testing.T) {
+	svc, _ := setupTestEnv(t)
+	out := filepath.Join(t.TempDir(), "no-such-subdir", "test-skill.tar.gz")
+
+	_, err := svc.Share("test-skill", out)
+	if err == nil {
+		t.Fatal("Share() with missing parent: want error, got nil")
+	}
+}

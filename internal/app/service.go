@@ -17,6 +17,7 @@ import (
 	"github.com/sethdeckard/loadout/internal/install"
 	"github.com/sethdeckard/loadout/internal/reconcile"
 	"github.com/sethdeckard/loadout/internal/registry"
+	"github.com/sethdeckard/loadout/internal/share"
 	"github.com/sethdeckard/loadout/internal/skillmd"
 )
 
@@ -123,6 +124,56 @@ func (s *Service) PreviewSkill(name domain.SkillName) (SkillPreview, error) {
 	}
 	files := listExtraFiles(filepath.Join(s.Config.RepoPath, skill.Path))
 	return SkillPreview{Skill: skill, Markdown: md, Files: files}, nil
+}
+
+// Share resolves the named skill in the repo and writes a portable .tar.gz
+// archive to disk. outPath controls the destination:
+//
+//   - empty string: write <CWD>/<name>.tar.gz
+//   - path with trailing slash, or path that already exists as a directory:
+//     write <outPath>/<name>.tar.gz
+//   - any other path: use verbatim as the final archive path
+//
+// The parent directory must exist; Share does not create parents. Share
+// returns the resolved absolute archive path on success.
+func (s *Service) Share(name domain.SkillName, outPath string) (string, error) {
+	skill, err := registry.LoadOne(s.Config.RepoPath, name)
+	if err != nil {
+		return "", err
+	}
+
+	finalPath, err := resolveShareOutPath(outPath, name)
+	if err != nil {
+		return "", err
+	}
+
+	if err := share.Build(s.Config.RepoPath, skill, finalPath); err != nil {
+		return "", err
+	}
+	return finalPath, nil
+}
+
+func resolveShareOutPath(outPath string, name domain.SkillName) (string, error) {
+	defaultName := string(name) + ".tar.gz"
+
+	if outPath == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("resolve output: %w", err)
+		}
+		return filepath.Join(cwd, defaultName), nil
+	}
+
+	abs, err := filepath.Abs(outPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve output: %w", err)
+	}
+
+	endsWithSep := strings.HasSuffix(outPath, string(filepath.Separator)) || strings.HasSuffix(outPath, "/")
+	if endsWithSep || fsx.DirExists(abs) {
+		return filepath.Join(abs, defaultName), nil
+	}
+	return abs, nil
 }
 
 func (s *Service) PreviewLocalSkill(name domain.SkillName, targetRoot string) (SkillPreview, error) {

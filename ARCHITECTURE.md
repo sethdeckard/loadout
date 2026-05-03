@@ -22,7 +22,7 @@ Loadout operates across three storage domains:
 1. Skill source repository
    A git repository containing a `skills/` tree. Each skill lives in its own directory with `skill.json` metadata and `SKILL.md` content.
 2. Local configuration
-   Machine-local configuration stored in `~/.config/loadout/config.json`. This defines the source repo path and the target install roots for Claude and Codex.
+   Machine-local configuration stored in `~/.config/loadout/config.toml`. This defines the source repo path and the target install roots for Claude and Codex.
 3. Installed target directories
    Derived copies of skills stored under target roots such as `~/.claude/skills` and `~/.codex/skills`, or under project roots in project mode.
 
@@ -72,7 +72,7 @@ It also owns repo mutation workflows such as importing a local skill directory i
 
 ### Configuration
 
-`internal/config` loads and saves machine-local configuration at `~/.config/loadout/config.json`.
+`internal/config` loads and saves machine-local configuration at `~/.config/loadout/config.toml`. A `config.json` from older versions is migrated to TOML on first load and left in place as a backup.
 
 The config currently stores:
 
@@ -202,13 +202,30 @@ Project mode is used by CLI commands that accept `--project` and by TUI startup 
 
 ### Config File
 
-`config.Config` is persisted at `~/.config/loadout/config.json` and currently contains:
+`config.Config` is persisted at `~/.config/loadout/config.toml` and currently contains:
 
 - `repo_path`
-- `targets.claude.enabled`
-- `targets.claude.path`
-- `targets.codex.enabled`
-- `targets.codex.path`
+- `[targets.claude]` with `enabled` and `path`
+- `[targets.codex]` with `enabled` and `path`
+- `[repo_actions]` with `import_auto_commit` and `delete_auto_commit` (default `true`)
+
+Example:
+
+```toml
+repo_path = "/Users/you/projects/skills"
+
+[targets.claude]
+enabled = true
+path = "/Users/you/.claude/skills"
+
+[targets.codex]
+enabled = true
+path = "/Users/you/.codex/skills"
+
+[repo_actions]
+import_auto_commit = true
+delete_auto_commit = true
+```
 
 This file defines where Loadout reads source content from and where user installs are written.
 

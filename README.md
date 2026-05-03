@@ -234,7 +234,7 @@ If you want `loadout-smith` without adopting the example repo as your main skill
 ## FAQ
 
 **Where does Loadout store its config?**
-`~/.config/loadout/config.json`.
+`~/.config/loadout/config.toml`. A `config.json` from an older version is read once and converted to TOML automatically; the original JSON file is left in place as a backup.
 
 **Can I use a local-only repo with no remote?**
 Yes. Sync skips network operations when no remote is configured. You still get local install management and refresh.

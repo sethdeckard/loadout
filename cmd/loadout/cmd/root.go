@@ -45,8 +45,11 @@ var rootCmd = &cobra.Command{
 	Short: "Skill manager for Claude and Codex",
 	Long:  "\n" + tui.Logo + "\n\n  Manages machine-local skill loadouts for Claude and Codex\n  from a git repo you own.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfgPath := config.DefaultPath()
-		if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		exists, err := config.HasExistingConfig()
+		if err != nil {
+			return err
+		}
+		if !exists {
 			fmt.Println("\n" + tui.Logo)
 			if err := runInitWith(os.Stdout, os.Stdin); err != nil {
 				return err

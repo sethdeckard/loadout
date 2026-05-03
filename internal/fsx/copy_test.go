@@ -1,7 +1,6 @@
 package fsx
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -64,26 +63,21 @@ func TestCopyDir_MissingSrc(t *testing.T) {
 	}
 }
 
-func TestWriteJSONAtomic(t *testing.T) {
+func TestWriteFileAtomic(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "sub", "data.json")
+	path := filepath.Join(dir, "sub", "data.bin")
 
-	data := map[string]string{"key": "value"}
-	if err := WriteJSONAtomic(path, data); err != nil {
-		t.Fatalf("WriteJSONAtomic() error = %v", err)
+	data := []byte("hello\nworld\n")
+	if err := WriteFileAtomic(path, data); err != nil {
+		t.Fatalf("WriteFileAtomic() error = %v", err)
 	}
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-
-	var got map[string]string
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if got["key"] != "value" {
-		t.Errorf("got %v, want key=value", got)
+	if string(raw) != string(data) {
+		t.Errorf("content = %q, want %q", raw, data)
 	}
 }
 
@@ -341,44 +335,17 @@ func TestCopyDir_NestedAndPermissions(t *testing.T) {
 	}
 }
 
-// --- WriteJSONAtomic edge cases ---
+// --- WriteFileAtomic edge cases ---
 
-// TestWriteJSONAtomic_UnmarshalableValue covers the json.MarshalIndent error
-// path by passing a value that cannot be marshalled to JSON.
-func TestWriteJSONAtomic_UnmarshalableValue(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "out.json")
-	// A channel cannot be marshalled to JSON.
-	err := WriteJSONAtomic(path, make(chan int))
-	if err == nil {
-		t.Fatal("expected error marshalling channel")
-	}
-}
-
-// TestWriteJSONAtomic_NewlineAppended confirms the written file ends with a
-// trailing newline (the byte appended after json.MarshalIndent).
-func TestWriteJSONAtomic_NewlineAppended(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nl.json")
-	if err := WriteJSONAtomic(path, map[string]int{"a": 1}); err != nil {
-		t.Fatalf("WriteJSONAtomic() error = %v", err)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if len(raw) == 0 || raw[len(raw)-1] != '\n' {
-		t.Errorf("file does not end with newline; content = %q", raw)
-	}
-}
-
-// TestWriteJSONAtomic_Overwrites verifies that calling WriteJSONAtomic twice on
+// TestWriteFileAtomic_Overwrites verifies that calling WriteFileAtomic twice on
 // the same path replaces the previous contents (atomic rename semantics).
-func TestWriteJSONAtomic_Overwrites(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "data.json")
+func TestWriteFileAtomic_Overwrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.bin")
 
-	if err := WriteJSONAtomic(path, map[string]string{"v": "one"}); err != nil {
+	if err := WriteFileAtomic(path, []byte("one")); err != nil {
 		t.Fatalf("first write: %v", err)
 	}
-	if err := WriteJSONAtomic(path, map[string]string{"v": "two"}); err != nil {
+	if err := WriteFileAtomic(path, []byte("two")); err != nil {
 		t.Fatalf("second write: %v", err)
 	}
 
@@ -386,23 +353,19 @@ func TestWriteJSONAtomic_Overwrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	var got map[string]string
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if got["v"] != "two" {
-		t.Errorf("got v=%q, want %q", got["v"], "two")
+	if string(raw) != "two" {
+		t.Errorf("content = %q, want %q", raw, "two")
 	}
 }
 
-// TestWriteJSONAtomic_UnwritableDir covers the os.MkdirAll / os.CreateTemp
+// TestWriteFileAtomic_UnwritableDir covers the os.MkdirAll / os.CreateTemp
 // error path by targeting a path whose parent cannot be created.
-func TestWriteJSONAtomic_UnwritableDir(t *testing.T) {
+func TestWriteFileAtomic_UnwritableDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on Windows")
 	}
 	// /nonexistent-readonly-dir does not exist and cannot be created under /.
-	err := WriteJSONAtomic("/nonexistent-readonly-dir/data.json", map[string]string{"k": "v"})
+	err := WriteFileAtomic("/nonexistent-readonly-dir/data.bin", []byte("x"))
 	if err == nil {
 		t.Fatal("expected error writing to uncreateable directory")
 	}

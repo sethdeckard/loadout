@@ -366,7 +366,7 @@ func TestRunInit_NonInteractiveWithAllFlags(t *testing.T) {
 		t.Fatalf("runInitWith() error = %v", err)
 	}
 
-	cfgPath := filepath.Join(tmp, ".config", "loadout", "config.json")
+	cfgPath := filepath.Join(tmp, ".config", "loadout", "config.toml")
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		t.Fatalf("config.Load() error = %v", err)

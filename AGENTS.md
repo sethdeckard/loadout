@@ -37,8 +37,8 @@ go run ./cmd/loadout    # Run the app (launches TUI if configured)
 cmd/loadout/            Entry point
 cmd/loadout/cmd/        Cobra subcommands (root, init, equip, unequip, etc.)
 internal/domain/        Pure types: Target, SkillName, Skill, errors, validation
-internal/fsx/           Filesystem helpers: CopyDir, WriteJSONAtomic, EnsureDir, DirExists, Exists, ListDirs
-internal/config/        Config persistence (~/.config/loadout/config.json)
+internal/fsx/           Filesystem helpers: CopyDir, WriteFileAtomic, EnsureDir, DirExists, Exists, ListDirs
+internal/config/        Config persistence (~/.config/loadout/config.toml)
 internal/registry/      Loads skill definitions from git repo's skills/ directory
 internal/gitrepo/       Git operations: IsRepo, Init, Clone, Pull, Push, HeadCommit, AddPathsAndCommit, sync checks
 internal/install/       Install/Remove skills to/from target directories
@@ -57,7 +57,7 @@ testdata/               Registry fixtures for tests
 - **TUI contains no business logic** — it calls app.Service for all operations
 - **No symlinks** — install means copy, remove means delete
 - **Repo contains content only** — no machine state in the git repo
-- **State is local** — each machine has its own config.json and .loadout marker files
+- **State is local** — each machine has its own config.toml and .loadout marker files
 - **Installed copies are disposable** — derived from repo, can be regenerated
 
 ## Code Style

@@ -1038,7 +1038,7 @@ func TestSettings_SaveUpdatesConfigAndWritesFile(t *testing.T) {
 	if !strings.Contains(string(data), filepath.Join(tempHome, "repo-new")) {
 		t.Fatalf("saved config missing expanded repo path:\n%s", string(data))
 	}
-	if !strings.Contains(string(data), `"import_auto_commit": false`) || !strings.Contains(string(data), `"delete_auto_commit": false`) {
+	if !strings.Contains(string(data), "import_auto_commit = false") || !strings.Contains(string(data), "delete_auto_commit = false") {
 		t.Fatalf("saved config missing repo action defaults:\n%s", string(data))
 	}
 }

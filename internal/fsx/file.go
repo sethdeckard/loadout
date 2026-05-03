@@ -1,21 +1,15 @@
 package fsx
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 )
 
-// WriteJSONAtomic writes v as JSON to path atomically by writing to a temp
-// file in the same directory and renaming.
-func WriteJSONAtomic(path string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal json: %w", err)
-	}
-	data = append(data, '\n')
-
+// WriteFileAtomic writes data to path atomically by writing to a temp file in
+// the same directory and renaming. The caller is responsible for any
+// format-specific marshaling.
+func WriteFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create dir: %w", err)

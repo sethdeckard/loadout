@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0] - 2026-05-03
+
+### Features
+
+- `loadout share <name>` packages a skill into a portable `.tar.gz` archive containing `claude-build/`, `codex-build/`, `loadout-source/`, and a `README.md` with install instructions for all three flows
+- Share archives omit `*-build/` subdirectories for targets the skill does not declare, and strip `.loadout` markers and OS junk (`.DS_Store`, `Thumbs.db`, `.git/`)
+- `--out` accepts a directory (writes `<name>.tar.gz` inside) or a full file path; existing output files are left untouched and the command errors instead of overwriting
+
+### Changes
+
+- Configuration now lives at `~/.config/loadout/config.toml` (TOML instead of JSON). Existing `config.json` files are read once and converted to TOML on first load; the original JSON file is left in place as a backup.
+
 ## [0.3.0] - 2026-04-03
 
 ### Features

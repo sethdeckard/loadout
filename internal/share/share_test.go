@@ -163,7 +163,7 @@ func TestBuild_BothTargets(t *testing.T) {
 	}
 
 	claudeMD := findEntry(entries, "claude-build/SKILL.md")
-	if claudeMD == nil || !bytes.Contains(claudeMD.data, []byte(`allowed-tools: "Read, Grep"`)) {
+	if claudeMD == nil || !bytes.Contains(claudeMD.data, []byte("allowed-tools: Read, Grep")) {
 		t.Errorf("claude SKILL.md missing claude metadata; got %s", claudeMD.data)
 	}
 
@@ -175,6 +175,37 @@ func TestBuild_BothTargets(t *testing.T) {
 	loadoutMD := findEntry(entries, "loadout-source/SKILL.md")
 	if loadoutMD == nil || bytes.HasPrefix(loadoutMD.data, []byte("---\n")) {
 		t.Errorf("loadout-source SKILL.md should be body-only (no frontmatter); got %s", loadoutMD.data)
+	}
+}
+
+func TestBuild_CodexPolicyFile(t *testing.T) {
+	fix := writeRepoSkill(t,
+		"policy-skill",
+		[]domain.Target{domain.TargetClaude, domain.TargetCodex},
+		nil,
+		map[string]any{"policy": map[string]any{"allow_implicit_invocation": false}},
+		nil,
+	)
+
+	out := filepath.Join(t.TempDir(), "policy-skill.tar.gz")
+	if err := Build(fix.repoPath, fix.skill, out); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	entries := extractTarGz(t, out)
+
+	policyEntry := findEntry(entries, "codex-build/agents/openai.yaml")
+	if policyEntry == nil {
+		t.Fatalf("archive missing codex-build/agents/openai.yaml; got %v", entryNames(entries))
+		return
+	}
+	if !bytes.Contains(policyEntry.data, []byte("allow_implicit_invocation: false")) {
+		t.Errorf("openai.yaml missing resolved policy; got %s", policyEntry.data)
+	}
+
+	// Claude build must not get the Codex policy file.
+	if findEntry(entries, "claude-build/agents/openai.yaml") != nil {
+		t.Error("claude-build should not contain agents/openai.yaml")
 	}
 }
 
@@ -202,6 +233,7 @@ func TestBuild_ClaudeOnly(t *testing.T) {
 	readme := findEntry(entries, "README.md")
 	if readme == nil {
 		t.Fatal("missing README.md")
+		return
 	}
 	if bytes.Contains(readme.data, []byte("### For Codex")) {
 		t.Errorf("claude-only README should not mention Codex; got %s", readme.data)
@@ -232,6 +264,7 @@ func TestBuild_CodexOnly(t *testing.T) {
 	readme := findEntry(entries, "README.md")
 	if readme == nil {
 		t.Fatal("missing README.md")
+		return
 	}
 	if bytes.Contains(readme.data, []byte("### For Claude")) {
 		t.Errorf("codex-only README should not mention Claude; got %s", readme.data)

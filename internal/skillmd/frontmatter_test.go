@@ -8,7 +8,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	content := "---\nname: Test Skill\ndescription: A: B\nallowed-tools: Read, Grep\n---\n\n# Test\nBody\n"
+	content := "---\nname: Test Skill\ndescription: \"A: B\"\ndisable-model-invocation: true\n---\n\n# Test\nBody\n"
 	parsed := Parse(content)
 
 	if got, want := parsed.Fields["name"], "Test Skill"; got != want {
@@ -16,6 +16,10 @@ func TestParse(t *testing.T) {
 	}
 	if got, want := parsed.Fields["description"], "A: B"; got != want {
 		t.Fatalf("description = %q, want %q", got, want)
+	}
+	// YAML-typed values: a bool stays a bool, not a string.
+	if got, want := parsed.Fields["disable-model-invocation"], true; got != want {
+		t.Fatalf("disable-model-invocation = %v (%T), want %v", got, got, want)
 	}
 	if !strings.Contains(parsed.Body, "# Test") {
 		t.Fatalf("body = %q, want heading", parsed.Body)
@@ -52,33 +56,26 @@ func TestBuildFrontmatter(t *testing.T) {
 	if !strings.Contains(got, "name: test-skill") {
 		t.Fatalf("frontmatter missing name:\n%s", got)
 	}
-	if !strings.Contains(got, `description: "A test skill."`) {
+	// yaml.v3 leaves scalars unquoted when no quoting is required.
+	if !strings.Contains(got, "description: A test skill.") {
 		t.Fatalf("frontmatter missing description:\n%s", got)
 	}
-	if !strings.Contains(got, `allowed-tools: "Read, Grep"`) {
+	if !strings.Contains(got, "allowed-tools: Read, Grep") {
 		t.Fatalf("frontmatter missing target meta:\n%s", got)
 	}
 }
 
-func TestYamlQuote(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"plain", "hello", `"hello"`},
-		{"with colon", "A: B", `"A: B"`},
-		{"with double quote", `say "hi"`, `"say \"hi\""`},
-		{"with backslash", `a\b`, `"a\\b"`},
-		{"empty", "", `""`},
+func TestBuildFrontmatter_OrdersNameAndDescriptionFirst(t *testing.T) {
+	skill := domain.Skill{
+		Name:        "test-skill",
+		Description: "desc",
+		Claude:      map[string]any{"allowed-tools": "Read"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := yamlQuote(tt.in)
-			if got != tt.want {
-				t.Errorf("yamlQuote(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
+
+	got := BuildFrontmatter(skill, domain.TargetClaude)
+	want := "name: test-skill\ndescription: desc\nallowed-tools: Read\n"
+	if got != want {
+		t.Fatalf("BuildFrontmatter() =\n%q\nwant\n%q", got, want)
 	}
 }
 
@@ -89,7 +86,8 @@ func TestBuildFrontmatter_QuotesDescription(t *testing.T) {
 	}
 
 	got := BuildFrontmatter(skill, domain.TargetClaude)
-	want := `description: "Does stuff. Conversational: analyzes things"`
+	// A colon-space forces quoting; yaml.v3 uses single quotes here.
+	want := `description: 'Does stuff. Conversational: analyzes things'`
 	if !strings.Contains(got, want) {
 		t.Fatalf("expected line %q in:\n%s", want, got)
 	}
@@ -121,9 +119,32 @@ func TestBuildFrontmatter_QuotesMetaValues(t *testing.T) {
 	}
 
 	got := BuildFrontmatter(skill, domain.TargetCodex)
-	want := `compatibility: "Requires git: yes"`
+	want := `compatibility: 'Requires git: yes'`
 	if !strings.Contains(got, want) {
 		t.Fatalf("expected line %q in:\n%s", want, got)
+	}
+}
+
+func TestBuildFrontmatter_FiltersCodexPolicyKeys(t *testing.T) {
+	skill := domain.Skill{
+		Name:        "test",
+		Description: "desc",
+		Codex: map[string]any{
+			"policy":                   map[string]any{"allow_implicit_invocation": false},
+			"disable-model-invocation": true,
+			"compatibility":            "ok",
+		},
+	}
+
+	got := BuildFrontmatter(skill, domain.TargetCodex)
+	if strings.Contains(got, "policy") {
+		t.Errorf("codex frontmatter should not contain policy:\n%s", got)
+	}
+	if strings.Contains(got, "disable-model-invocation") {
+		t.Errorf("codex frontmatter should not contain disable-model-invocation:\n%s", got)
+	}
+	if !strings.Contains(got, "compatibility: ok") {
+		t.Errorf("codex frontmatter should keep non-policy meta:\n%s", got)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sethdeckard/loadout/internal/codex"
 	"github.com/sethdeckard/loadout/internal/domain"
 	"github.com/sethdeckard/loadout/internal/fsx"
 	"github.com/sethdeckard/loadout/internal/skillmd"
@@ -40,6 +41,10 @@ func Stage(repoPath string, skill domain.Skill, target domain.Target, destDir st
 
 	if err := transformSkillMD(destDir, skill, target); err != nil {
 		return fmt.Errorf("transform SKILL.md: %w", err)
+	}
+
+	if err := materializeCodexPolicy(destDir, skill, target); err != nil {
+		return fmt.Errorf("materialize codex policy: %w", err)
 	}
 
 	return nil
@@ -132,6 +137,37 @@ func transformSkillMD(stagingDir string, skill domain.Skill, target domain.Targe
 	content := fmt.Sprintf("---\n%s---\n\n%s", fm, stripped)
 
 	return os.WriteFile(mdPath, []byte(content), 0o644)
+}
+
+// materializeCodexPolicy writes the resolved Codex invocation policy into
+// stagingDir/agents/openai.yaml. It runs only for the Codex target and only
+// when the skill declares a policy; the resolved value is merged into any
+// existing openai.yaml (preserving other fields). When no policy is declared,
+// no file is created and an existing one is left untouched.
+func materializeCodexPolicy(stagingDir string, skill domain.Skill, target domain.Target) error {
+	if target != domain.TargetCodex {
+		return nil
+	}
+	allowImplicit, present := domain.ResolveCodexPolicy(skill.Codex)
+	if !present {
+		return nil
+	}
+
+	yamlPath := filepath.Join(stagingDir, filepath.FromSlash(codex.OpenAIYAMLPath))
+	existing, err := os.ReadFile(yamlPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	merged, err := codex.Merge(existing, allowImplicit)
+	if err != nil {
+		return err
+	}
+
+	if err := fsx.EnsureDir(filepath.Dir(yamlPath)); err != nil {
+		return err
+	}
+	return os.WriteFile(yamlPath, merged, 0o644)
 }
 
 // HasMarker returns true if the skill directory contains a .loadout marker.

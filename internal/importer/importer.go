@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
+	"github.com/sethdeckard/loadout/internal/codex"
 	"github.com/sethdeckard/loadout/internal/config"
 	"github.com/sethdeckard/loadout/internal/domain"
 	"github.com/sethdeckard/loadout/internal/fsx"
@@ -350,6 +350,15 @@ func applyTargets(prepared preparedImport, targets []domain.Target) (preparedImp
 	return prepared, nil
 }
 
+func containsTarget(targets []domain.Target, want domain.Target) bool {
+	for _, t := range targets {
+		if t == want {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeTargets(targets []domain.Target) []domain.Target {
 	seen := make(map[domain.Target]bool)
 	normalized := make([]domain.Target, 0, len(targets))
@@ -418,6 +427,13 @@ func prepareImport(sourceDir string, targets []domain.Target) (preparedImport, e
 		}
 	}
 
+	// Codex policy is captured when the import will produce a Codex skill —
+	// either the source declares the target or an explicit override adds it.
+	codexTargeted := skill.SupportsTarget(domain.TargetCodex) || containsTarget(targets, domain.TargetCodex)
+	if err := applyOpenAIPolicy(sourceDir, &skill, codexTargeted); err != nil {
+		return preparedImport{}, err
+	}
+
 	if err := domain.ValidateSkill(skill); err != nil {
 		return preparedImport{}, err
 	}
@@ -453,13 +469,13 @@ func inferSkill(sourceDir string, parsed skillmd.Parsed, targets []domain.Target
 		return domain.Skill{}, fmt.Errorf("%w: explicit targets required", domain.ErrInvalidSkill)
 	}
 
-	description := parsed.Fields["description"]
+	description, _ := parsed.Fields["description"].(string)
 	meta := map[string]any{}
 	for key, value := range parsed.Fields {
 		if key == "name" || key == "description" {
 			continue
 		}
-		meta[key] = parseScalar(value)
+		meta[key] = value
 	}
 
 	skill := domain.Skill{
@@ -494,8 +510,25 @@ func snapshotNormalized(sourceDir, markdown string, skillJSON []byte) ([]byte, e
 		if err != nil {
 			return err
 		}
-		switch rel {
+		switch filepath.ToSlash(rel) {
 		case fsx.MarkerFile:
+			return nil
+		case codex.OpenAIYAMLPath:
+			// The policy value is derived from skill.json and regenerated on
+			// Codex install. Compare only author-written fields so a Codex-only
+			// generated policy file does not look like a conflict, while real
+			// authored differences (interface, dependencies) still register.
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			stripped, hasContent, err := codex.StripManagedPolicy(data)
+			if err != nil {
+				return err
+			}
+			if hasContent {
+				files[rel] = stripped
+			}
 			return nil
 		case "SKILL.md":
 			files[rel] = []byte(markdown)
@@ -547,12 +580,38 @@ func slugify(s string) string {
 	return s
 }
 
-func parseScalar(value string) any {
-	if b, err := strconv.ParseBool(value); err == nil {
-		return b
+// applyOpenAIPolicy fills the native Codex invocation policy on skill from an
+// existing agents/openai.yaml in sourceDir. It runs only when the import targets
+// Codex and never overrides a policy already declared in skill.json (native or
+// via the disable-model-invocation alias); it only fills what is missing.
+func applyOpenAIPolicy(sourceDir string, skill *domain.Skill, codexTargeted bool) error {
+	if !codexTargeted {
+		return nil
 	}
-	if i, err := strconv.Atoi(value); err == nil {
-		return i
+	if _, present := domain.ResolveCodexPolicy(skill.Codex); present {
+		return nil
 	}
-	return value
+
+	data, err := os.ReadFile(filepath.Join(sourceDir, filepath.FromSlash(codex.OpenAIYAMLPath)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read openai.yaml: %w", err)
+	}
+	allowImplicit, present := codex.InferAllowImplicit(data)
+	if !present {
+		return nil
+	}
+
+	if skill.Codex == nil {
+		skill.Codex = map[string]any{}
+	}
+	policy, ok := skill.Codex[domain.PolicyKey].(map[string]any)
+	if !ok {
+		policy = map[string]any{}
+		skill.Codex[domain.PolicyKey] = policy
+	}
+	policy[domain.AllowImplicitInvocationKey] = allowImplicit
+	return nil
 }

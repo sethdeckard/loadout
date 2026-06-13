@@ -563,6 +563,7 @@ func TestDoctor_MissingRepo(t *testing.T) {
 	}
 	if repoCheck == nil {
 		t.Fatal("no Repository check found")
+		return
 	}
 	if repoCheck.OK {
 		t.Error("Repository check should be not OK for non-git dir")
@@ -593,6 +594,7 @@ func TestDoctor_Converged(t *testing.T) {
 	}
 	if convergenceCheck == nil {
 		t.Fatal("no Convergence check found")
+		return
 	}
 	if !convergenceCheck.OK {
 		t.Errorf("Convergence check should be OK; detail: %s", convergenceCheck.Detail)
@@ -990,6 +992,7 @@ func TestListSkillsForProject_AppendsReadyProjectImportCandidates(t *testing.T) 
 	}
 	if found == nil {
 		t.Fatal("expected ready project-local candidate in views")
+		return
 	}
 	if got, want := found.Flags, []reconcile.StatusFlag{reconcile.StatusUnmanaged}; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("Flags = %v, want %v", got, want)

@@ -1,47 +1,28 @@
 package skillmd
 
 import (
-	"fmt"
 	"sort"
 	"strings"
+
+	yaml "go.yaml.in/yaml/v3"
 
 	"github.com/sethdeckard/loadout/internal/domain"
 )
 
 type Parsed struct {
-	Fields map[string]string
+	Fields map[string]any
 	Body   string
 }
 
 func Parse(content string) Parsed {
-	if !strings.HasPrefix(content, "---\n") {
-		return Parsed{Fields: map[string]string{}, Body: content}
+	inner, body, ok := splitFrontmatter(content)
+	if !ok {
+		return Parsed{Fields: map[string]any{}, Body: content}
 	}
-
-	lines := strings.Split(content, "\n")
-	fields := make(map[string]string)
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if lines[i] == "---" {
-			end = i
-			break
-		}
-		line := lines[i]
-		if line == "" {
-			continue
-		}
-		key, value, ok := strings.Cut(line, ":")
-		if !ok {
-			return Parsed{Fields: map[string]string{}, Body: content}
-		}
-		fields[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	fields := map[string]any{}
+	if err := yaml.Unmarshal([]byte(inner), &fields); err != nil || fields == nil {
+		fields = map[string]any{}
 	}
-	if end == -1 {
-		return Parsed{Fields: map[string]string{}, Body: content}
-	}
-
-	body := strings.Join(lines[end+1:], "\n")
-	body = strings.TrimPrefix(body, "\n")
 	return Parsed{Fields: fields, Body: body}
 }
 
@@ -62,59 +43,71 @@ func Heading(content string) string {
 // StripFrontmatter removes the first leading ---...--- block by delimiter,
 // without parsing the content between delimiters.
 func StripFrontmatter(content string) string {
-	if !strings.HasPrefix(content, "---\n") {
+	_, body, ok := splitFrontmatter(content)
+	if !ok {
 		return content
 	}
-	end := strings.Index(content[4:], "\n---\n")
-	if end != -1 {
-		body := content[4+end+5:] // skip past "\n---\n"
-		body = strings.TrimPrefix(body, "\n")
-		return body
-	}
-	// Handle closing --- at EOF (no trailing newline)
-	if strings.HasSuffix(content, "\n---") {
-		return ""
-	}
-	return content
+	return body
 }
 
-// yamlQuote wraps s in double quotes, escaping internal backslashes and
-// double-quote characters. This produces a valid YAML double-quoted scalar.
-func yamlQuote(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	return `"` + s + `"`
-}
-
-// formatValue formats a metadata value for YAML output. Strings are
-// double-quoted to avoid YAML special-character issues. Bools and numbers
-// are emitted unquoted to preserve their YAML type.
-func formatValue(v any) string {
-	switch v.(type) {
-	case bool, int, int64, float64:
-		return fmt.Sprint(v)
-	default:
-		return yamlQuote(fmt.Sprint(v))
+// splitFrontmatter separates a leading ---...--- block from the body using
+// delimiter detection only. inner is the raw text between the delimiters; body
+// is everything after the closing delimiter. ok is false when content has no
+// well-formed frontmatter block, in which case the whole content is the body.
+func splitFrontmatter(content string) (inner, body string, ok bool) {
+	if !strings.HasPrefix(content, "---\n") {
+		return "", "", false
 	}
+	rest := content[4:]
+	if idx := strings.Index(rest, "\n---\n"); idx != -1 {
+		body = strings.TrimPrefix(rest[idx+5:], "\n")
+		return rest[:idx], body, true
+	}
+	// Closing delimiter at EOF (no trailing newline).
+	if strings.HasSuffix(rest, "\n---") {
+		return rest[:len(rest)-4], "", true
+	}
+	return "", "", false
 }
 
+// BuildFrontmatter serializes a skill's identity and target-specific metadata as
+// YAML frontmatter. name and description lead, followed by remaining metadata
+// keys in sorted order. For the Codex target, policy-only keys are filtered out
+// (the invocation policy lives in agents/openai.yaml, not the frontmatter).
 func BuildFrontmatter(skill domain.Skill, target domain.Target) string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("name: %s\n", skill.Name))
-	b.WriteString(fmt.Sprintf("description: %s\n", yamlQuote(skill.Description)))
+	root := &yaml.Node{Kind: yaml.MappingNode}
+	appendField(root, "name", string(skill.Name))
+	appendField(root, "description", skill.Description)
 
 	meta := skill.TargetMeta(target)
-	if len(meta) == 0 {
-		return b.String()
-	}
-
 	keys := make([]string, 0, len(meta))
 	for key := range meta {
+		if target == domain.TargetCodex && isCodexPolicyKey(key) {
+			continue
+		}
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		b.WriteString(fmt.Sprintf("%s: %s\n", key, formatValue(meta[key])))
+		appendField(root, key, meta[key])
 	}
-	return b.String()
+
+	out, err := yaml.Marshal(root)
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+func appendField(mapping *yaml.Node, key string, value any) {
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key}
+	valueNode := &yaml.Node{}
+	if err := valueNode.Encode(value); err != nil {
+		return
+	}
+	mapping.Content = append(mapping.Content, keyNode, valueNode)
+}
+
+func isCodexPolicyKey(key string) bool {
+	return key == domain.PolicyKey || key == domain.DisableModelInvocationKey
 }

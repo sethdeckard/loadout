@@ -226,6 +226,30 @@ If you want `loadout-smith` without adopting the example repo as your main skill
 
 `name` is the canonical skill identifier. It must match the directory name under `skills/`, and Loadout also uses it as the installed frontmatter `name:` field. Rules: lowercase letters, numbers, and hyphens only; must not start or end with a hyphen; max 64 characters.
 
+#### Per-target metadata
+
+Optional `claude` and `codex` objects carry target-specific metadata. Claude metadata is written into the installed `SKILL.md` frontmatter; Codex metadata is too, except for invocation-policy keys (see below).
+
+```json
+{
+  "name": "trailhead-sketch",
+  "description": "Plot the route before you march.",
+  "targets": ["claude", "codex"],
+  "claude": { "allowed-tools": "Read, Grep" },
+  "codex": { "policy": { "allow_implicit_invocation": false } }
+}
+```
+
+#### Codex invocation policy
+
+For Codex, "should the model auto-invoke this skill?" is expressed in `<skill>/agents/openai.yaml`. Declare it once in `skill.json` and Loadout materializes that file on every Codex install and in shared `codex-build/` output. The native shape is preferred:
+
+```json
+"codex": { "policy": { "allow_implicit_invocation": false } }
+```
+
+`disable-model-invocation` is accepted as a Claude-style compatibility alias (`true` ⇒ `allow_implicit_invocation: false`, `false` ⇒ `true`). When both are present, the native `policy.allow_implicit_invocation` wins. If neither is declared, Loadout writes no policy and leaves any existing `agents/openai.yaml` untouched. Importing a Codex skill that ships an `agents/openai.yaml` captures its policy back into the generated `skill.json`.
+
 ## Skill Format References
 
 - OpenAI open format: <https://agentskills.io/specification>

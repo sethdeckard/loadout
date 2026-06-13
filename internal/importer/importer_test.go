@@ -343,6 +343,155 @@ func TestImport_PreservesExtraFiles(t *testing.T) {
 	}
 }
 
+func writeOpenAIYAML(t *testing.T, sourceDir, content string) {
+	t.Helper()
+	agentsDir := filepath.Join(sourceDir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatalf("mkdir agents: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "openai.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write openai.yaml: %v", err)
+	}
+}
+
+func TestImport_InfersCodexPolicyFromOpenAIYAML(t *testing.T) {
+	repo := t.TempDir()
+	source := filepath.Join(t.TempDir(), "codex-skill")
+	writeSkillSource(t, source, "---\nname: Codex Skill\ndescription: imported\n---\n\n# Codex Skill\nBody\n", "")
+	writeOpenAIYAML(t, source, "interface:\n  command: do-thing\npolicy:\n  allow_implicit_invocation: false\n")
+
+	result, err := Import(ImportParams{
+		SourceDir: source,
+		RepoPath:  repo,
+		Targets:   []domain.Target{domain.TargetCodex},
+	})
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	allow, present := domain.ResolveCodexPolicy(result.Skill.Codex)
+	if !present || allow != false {
+		t.Fatalf("resolved policy = (%v, %v), want (false, true)", allow, present)
+	}
+
+	// The native shape must be persisted to skill.json on disk.
+	data, err := os.ReadFile(filepath.Join(result.DestDir, "skill.json"))
+	if err != nil {
+		t.Fatalf("read skill.json: %v", err)
+	}
+	if !strings.Contains(string(data), "allow_implicit_invocation") {
+		t.Fatalf("skill.json missing native policy:\n%s", data)
+	}
+}
+
+func TestImport_PreservesExplicitCodexPolicyOverFile(t *testing.T) {
+	repo := t.TempDir()
+	source := filepath.Join(t.TempDir(), "codex-skill")
+	writeSkillSource(t, source, "# Codex Skill\n", `{
+  "name": "codex-skill",
+  "description": "desc",
+  "targets": ["codex"],
+  "codex": {"policy": {"allow_implicit_invocation": true}}
+}`)
+	// File disagrees with the explicit declaration; the declaration must win.
+	writeOpenAIYAML(t, source, "policy:\n  allow_implicit_invocation: false\n")
+
+	result, err := Import(ImportParams{SourceDir: source, RepoPath: repo})
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	allow, present := domain.ResolveCodexPolicy(result.Skill.Codex)
+	if !present || allow != true {
+		t.Fatalf("explicit policy should be preserved; got (%v, %v), want (true, true)", allow, present)
+	}
+}
+
+func TestImport_TargetOverrideAddsCodexCapturesPolicy(t *testing.T) {
+	repo := t.TempDir()
+	source := filepath.Join(t.TempDir(), "codex-skill")
+	// Source declares only claude, but ships an openai.yaml; the override adds codex.
+	writeSkillSource(t, source, "# Codex Skill\n", `{
+  "name": "codex-skill",
+  "description": "desc",
+  "targets": ["claude"]
+}`)
+	writeOpenAIYAML(t, source, "policy:\n  allow_implicit_invocation: false\n")
+
+	result, err := Import(ImportParams{
+		SourceDir: source,
+		RepoPath:  repo,
+		Targets:   []domain.Target{domain.TargetCodex},
+	})
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	if !result.Skill.SupportsTarget(domain.TargetCodex) {
+		t.Fatalf("override should make skill codex-targeted; targets = %v", result.Skill.Targets)
+	}
+	allow, present := domain.ResolveCodexPolicy(result.Skill.Codex)
+	if !present || allow != false {
+		t.Fatalf("override import should capture policy from openai.yaml; got (%v, %v)", allow, present)
+	}
+}
+
+func TestDiscoverCandidates_CodexPolicyFileNotConflict(t *testing.T) {
+	root := t.TempDir()
+	claudeDir := filepath.Join(root, "claude")
+	codexDir := filepath.Join(root, "codex")
+	skillJSON := `{"name":"shared-skill","targets":["claude","codex"],"codex":{"policy":{"allow_implicit_invocation":false}}}`
+	writeSkillSource(t, filepath.Join(claudeDir, "shared-skill"), "# Test\n", skillJSON)
+
+	// The Codex install carries the synthesized policy file; the Claude one does not.
+	codexCopy := filepath.Join(codexDir, "shared-skill")
+	writeSkillSource(t, codexCopy, "# Test\n", skillJSON)
+	writeOpenAIYAML(t, codexCopy, "policy:\n  allow_implicit_invocation: false\n")
+
+	candidates, err := DiscoverCandidates(config.TargetPaths{
+		Claude: config.TargetConfig{Enabled: true, Path: claudeDir},
+		Codex:  config.TargetConfig{Enabled: true, Path: codexDir},
+	})
+	if err != nil {
+		t.Fatalf("DiscoverCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("len(candidates) = %d, want 1", len(candidates))
+	}
+	if !candidates[0].Ready {
+		t.Fatalf("Codex-only policy file should not cause a conflict; got %+v", candidates[0])
+	}
+}
+
+func TestDiscoverCandidates_AuthoredCodexFileConflicts(t *testing.T) {
+	root := t.TempDir()
+	claudeDir := filepath.Join(root, "claude")
+	codexDir := filepath.Join(root, "codex")
+	skillJSON := `{"name":"shared-skill","targets":["claude","codex"]}`
+	// Claude root has no openai.yaml; Codex root has an authored one with
+	// non-derived fields. Dropping only the managed policy still leaves a real
+	// difference, so this must be reported as a conflict (importing the Claude
+	// copy would lose the authored file).
+	writeSkillSource(t, filepath.Join(claudeDir, "shared-skill"), "# Test\n", skillJSON)
+	codexCopy := filepath.Join(codexDir, "shared-skill")
+	writeSkillSource(t, codexCopy, "# Test\n", skillJSON)
+	writeOpenAIYAML(t, codexCopy, "interface:\n  command: do-thing\npolicy:\n  allow_implicit_invocation: false\n")
+
+	candidates, err := DiscoverCandidates(config.TargetPaths{
+		Claude: config.TargetConfig{Enabled: true, Path: claudeDir},
+		Codex:  config.TargetConfig{Enabled: true, Path: codexDir},
+	})
+	if err != nil {
+		t.Fatalf("DiscoverCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("len(candidates) = %d, want 1", len(candidates))
+	}
+	if candidates[0].Ready {
+		t.Fatalf("authored Codex-only openai.yaml should conflict; got %+v", candidates[0])
+	}
+}
+
 func writeMarker(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, ".loadout"), []byte(`{"repo_commit":"abc","installed_at":"2025-01-01T00:00:00Z"}`), 0o644); err != nil {

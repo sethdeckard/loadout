@@ -43,6 +43,7 @@ internal/registry/      Loads skill definitions from git repo's skills/ director
 internal/gitrepo/       Git operations: IsRepo, Init, Clone, Pull, Push, HeadCommit, AddPathsAndCommit, sync checks
 internal/install/       Install/Remove skills to/from target directories
 internal/importer/      Import local skills into the shared repo
+internal/codex/         Codex agents/openai.yaml policy merge + inference
 internal/skillmd/       Parse YAML frontmatter and headings from SKILL.md files
 internal/scope/         Resolve user vs project-local install roots
 internal/reconcile/     Compute per-skill inventory status from repo + filesystem

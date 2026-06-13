@@ -221,9 +221,10 @@ func loadLocalSkill(dir string, name domain.SkillName) domain.Skill {
 		return domain.Skill{Name: name}
 	}
 	parsed := skillmd.Parse(string(mdBytes))
+	description, _ := parsed.Fields["description"].(string)
 	return domain.Skill{
 		Name:        name,
-		Description: parsed.Fields["description"],
+		Description: description,
 	}
 }
 

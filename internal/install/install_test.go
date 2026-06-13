@@ -7,7 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sethdeckard/loadout/internal/codex"
 	"github.com/sethdeckard/loadout/internal/domain"
+	"github.com/sethdeckard/loadout/internal/skillmd"
+
+	yaml "go.yaml.in/yaml/v3"
 )
 
 func setupTestRepo(t *testing.T) string {
@@ -59,7 +63,7 @@ func TestInstallNew(t *testing.T) {
 	if !strings.Contains(content, "name: test-skill") {
 		t.Error("frontmatter should contain name")
 	}
-	if !strings.Contains(content, `description: "A test skill."`) {
+	if !strings.Contains(content, "description: A test skill.") {
 		t.Error("frontmatter should contain description")
 	}
 	if !strings.Contains(content, "# Test") {
@@ -125,7 +129,7 @@ func TestInstallClaudeFrontmatter(t *testing.T) {
 	md, _ := os.ReadFile(filepath.Join(targetRoot, "test-skill", "SKILL.md"))
 	content := string(md)
 
-	if !strings.Contains(content, `allowed-tools: "Read, Grep"`) {
+	if !strings.Contains(content, "allowed-tools: Read, Grep") {
 		t.Error("should include allowed-tools from claude config")
 	}
 	if !strings.Contains(content, "disable-model-invocation: true") {
@@ -157,7 +161,7 @@ func TestInstallCodexFrontmatter(t *testing.T) {
 	if !strings.Contains(content, "name: test-skill") {
 		t.Error("should include name")
 	}
-	if !strings.Contains(content, `description: "A test skill."`) {
+	if !strings.Contains(content, "description: A test skill.") {
 		t.Error("should include description")
 	}
 	// Claude-specific fields should NOT appear in codex install
@@ -549,7 +553,7 @@ func TestStage_RewritesFrontmatter(t *testing.T) {
 	if !strings.Contains(content, "name: test-skill") {
 		t.Error("Stage() output should include frontmatter")
 	}
-	if !strings.Contains(content, `allowed-tools: "Read"`) {
+	if !strings.Contains(content, "allowed-tools: Read") {
 		t.Error("Stage() output should include claude metadata")
 	}
 }
@@ -582,8 +586,162 @@ func TestInstall_DescriptionWithColon(t *testing.T) {
 	md, _ := os.ReadFile(filepath.Join(targetRoot, "test-skill", "SKILL.md"))
 	content := string(md)
 
-	want := `description: "Does stuff. Conversational: analyzes things"`
+	// The colon-space forces quoting; yaml.v3 emits a single-quoted scalar. The
+	// key assertion is that the value round-trips losslessly through YAML.
+	want := `description: 'Does stuff. Conversational: analyzes things'`
 	if !strings.Contains(content, want) {
 		t.Errorf("expected line %q in:\n%s", want, content)
+	}
+	parsed := skillmd.Parse(content)
+	if got := parsed.Fields["description"]; got != skill.Description {
+		t.Errorf("description round-trip = %q, want %q", got, skill.Description)
+	}
+}
+
+// readInstalledPolicy reads agents/openai.yaml from the installed test-skill and
+// returns its allow_implicit_invocation value (present=false if no file).
+func readInstalledPolicy(t *testing.T, targetRoot string) (val, present bool) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(targetRoot, "test-skill", filepath.FromSlash(codex.OpenAIYAMLPath)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, false
+		}
+		t.Fatalf("read openai.yaml: %v", err)
+	}
+	return codex.InferAllowImplicit(data)
+}
+
+func TestInstall_CodexNativePolicy(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	skill := testSkill()
+	skill.Codex = map[string]any{"policy": map[string]any{"allow_implicit_invocation": false}}
+
+	if err := Install(repo, skill, domain.TargetCodex, targetRoot, "abc123"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	val, present := readInstalledPolicy(t, targetRoot)
+	if !present || val != false {
+		t.Errorf("policy = (%v, %v), want (false, true)", val, present)
+	}
+}
+
+func TestInstall_CodexAliasPolicy(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	skill := testSkill()
+	skill.Codex = map[string]any{"disable-model-invocation": true}
+
+	if err := Install(repo, skill, domain.TargetCodex, targetRoot, "abc123"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	val, present := readInstalledPolicy(t, targetRoot)
+	if !present || val != false {
+		t.Errorf("alias disable-model-invocation:true should yield allow_implicit_invocation:false; got (%v, %v)", val, present)
+	}
+}
+
+func TestInstall_CodexNativeWinsOverAlias(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	skill := testSkill()
+	skill.Codex = map[string]any{
+		"policy":                   map[string]any{"allow_implicit_invocation": true},
+		"disable-model-invocation": true, // would imply false if it won
+	}
+
+	if err := Install(repo, skill, domain.TargetCodex, targetRoot, "abc123"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	val, present := readInstalledPolicy(t, targetRoot)
+	if !present || val != true {
+		t.Errorf("native policy should win; got (%v, %v), want (true, true)", val, present)
+	}
+}
+
+func TestInstall_CodexPreservesExistingOpenAIYAML(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	// Author-written openai.yaml in the repo source with fields Loadout must keep.
+	agentsDir := filepath.Join(repo, "skills", "test-skill", "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatalf("mkdir agents: %v", err)
+	}
+	existing := "interface:\n  command: do-thing\ndependencies:\n  - foo\npolicy:\n  allow_implicit_invocation: true\n  some_other_flag: keep-me\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "openai.yaml"), []byte(existing), 0o644); err != nil {
+		t.Fatalf("write openai.yaml: %v", err)
+	}
+
+	skill := testSkill()
+	skill.Codex = map[string]any{"policy": map[string]any{"allow_implicit_invocation": false}}
+
+	if err := Install(repo, skill, domain.TargetCodex, targetRoot, "abc123"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(targetRoot, "test-skill", "agents", "openai.yaml"))
+	if err != nil {
+		t.Fatalf("read installed openai.yaml: %v", err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if iface, ok := doc["interface"].(map[string]any); !ok || iface["command"] != "do-thing" {
+		t.Errorf("interface not preserved: %v", doc["interface"])
+	}
+	if _, ok := doc["dependencies"].([]any); !ok {
+		t.Errorf("dependencies not preserved: %v", doc["dependencies"])
+	}
+	policy, _ := doc["policy"].(map[string]any)
+	if policy["some_other_flag"] != "keep-me" {
+		t.Errorf("unrelated policy field not preserved: %v", policy)
+	}
+	if policy["allow_implicit_invocation"] != false {
+		t.Errorf("allow_implicit_invocation = %v, want false", policy["allow_implicit_invocation"])
+	}
+}
+
+func TestInstall_CodexNoPolicyNoFile(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	skill := testSkill()
+	skill.Codex = map[string]any{} // no policy declared
+
+	if err := Install(repo, skill, domain.TargetCodex, targetRoot, "abc123"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	if _, present := readInstalledPolicy(t, targetRoot); present {
+		t.Error("no policy declared should not synthesize agents/openai.yaml")
+	}
+}
+
+func TestInstall_ClaudePolicyUnchanged(t *testing.T) {
+	repo := setupTestRepo(t)
+	targetRoot := filepath.Join(t.TempDir(), "skills")
+
+	skill := testSkill()
+	skill.Claude = map[string]any{"disable-model-invocation": true}
+
+	if err := Install(repo, skill, domain.TargetClaude, targetRoot, "abc123"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	md, _ := os.ReadFile(filepath.Join(targetRoot, "test-skill", "SKILL.md"))
+	if !strings.Contains(string(md), "disable-model-invocation: true") {
+		t.Errorf("claude frontmatter should retain disable-model-invocation; got:\n%s", md)
+	}
+	if _, present := readInstalledPolicy(t, targetRoot); present {
+		t.Error("claude install should not write agents/openai.yaml")
 	}
 }

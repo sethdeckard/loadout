@@ -11,25 +11,31 @@ Loadout is a Go TUI/CLI app that manages machine-local installation of skills fo
 
 ## Build & Test
 
-```bash
-go build ./...          # Compile all packages
-go test ./...           # Run all tests
-go vet ./...            # Static analysis
-go run ./cmd/loadout    # Run the app (launches TUI if configured)
-```
+Use `make` for the build and quality gates — those targets pin the `-ldflags`
+(version/commit/date) and the lint/build caches that bare `go` commands miss and
+that CI relies on. Use bare `go` to run CLI subcommands and to iterate on a
+single package or test. The `Makefile` is the source of truth for the gate
+targets.
 
-### Makefile Targets
+| Workflow | Command |
+|----------|---------|
+| Run a CLI command | `go run ./cmd/loadout <command> [flags]` |
+| Build the release binary | `make build` |
+| Iterate on one package or test | `go test ./internal/<pkg>/ -run TestName -v` |
+| Run all tests | `make test` |
+| Tests with the race detector | `make test-race` |
+| Static analysis | `make vet` |
+| Lint + formatting checks | `make lint` |
+| Coverage report (text / HTML) | `make cover` / `make cover-html` |
+| Remove build + coverage artifacts | `make clean` |
 
-| Target | Description |
-|--------|-------------|
-| `make build` | Build the `loadout` binary |
-| `make test` | Run all tests |
-| `make test-race` | Run all tests with race detector |
-| `make cover` | Generate coverage report (text) |
-| `make cover-html` | Generate coverage report (HTML) |
-| `make vet` | Run `go vet` |
-| `make lint` | Run `golangci-lint` |
-| `make clean` | Remove binary and coverage files |
+Running `go run ./cmd/loadout` with no subcommand opens the interactive TUI —
+avoid that in automation; invoke a specific subcommand instead.
+
+**After code changes:** run `make test` and `make lint`.
+
+**Before committing (CI enforces these):** `make test-race`, `make vet`, and
+`make lint` — all three must pass.
 
 ## Project Structure
 
@@ -90,15 +96,6 @@ testdata/               Registry fixtures for tests
 - **Fixtures**: stored in `testdata/` directories
 - **`t.Fatalf`** when continuing is meaningless, `t.Errorf` when other checks still add value
 
-## After Changes
-
-After making code changes, run:
-
-```bash
-make test              # Run all tests
-make lint              # Run golangci-lint (includes formatting checks)
-```
-
 ## CLI Commands
 
 | Command | Description |
@@ -115,14 +112,3 @@ make lint              # Run golangci-lint (includes formatting checks)
 | `loadout sync` | Sync repo and refresh outdated managed installs |
 | `loadout doctor` | Health check |
 
-## Before Committing
-
-Run all quality gates — CI will enforce these:
-
-```bash
-make test-race          # Tests with race detector
-make vet                # Static analysis
-make lint               # golangci-lint
-```
-
-All three must pass before committing.

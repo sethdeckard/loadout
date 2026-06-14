@@ -46,6 +46,7 @@ Make targets are available for the common workflows:
 
 ```bash
 make build
+make run        # launches the TUI
 make test
 make test-race
 make vet

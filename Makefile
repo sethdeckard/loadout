@@ -5,10 +5,13 @@ LDFLAGS := -X github.com/sethdeckard/loadout/cmd/loadout/cmd.version=$(VERSION) 
            -X github.com/sethdeckard/loadout/cmd/loadout/cmd.commit=$(COMMIT) \
            -X github.com/sethdeckard/loadout/cmd/loadout/cmd.date=$(DATE)
 
-.PHONY: build test test-race cover cover-html lint vet clean
+.PHONY: build run test test-race cover cover-html lint vet clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o loadout ./cmd/loadout
+
+run:
+	go run ./cmd/loadout
 
 test:
 	go test ./...

@@ -16,6 +16,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.clampScrollOffsets()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -365,11 +366,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyDown:
 		if m.showHelp {
-			m.helpScroll++
+			m.helpScroll = min(m.helpScroll+1, m.maxHelpScroll())
 			return m, nil
 		}
 		if m.focusPane == paneDetails {
-			m.detailScroll++
+			m.detailScroll = min(m.detailScroll+1, m.maxDetailScroll())
 			return m, nil
 		}
 		return m, m.moveSkillCursor(m.cursor + 1)
@@ -387,11 +388,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyBottom:
 		if m.showHelp {
-			m.helpScroll = 999999 // clamped in view
+			m.helpScroll = m.maxHelpScroll()
 			return m, nil
 		}
 		if m.focusPane == paneDetails {
-			m.detailScroll = 999999 // clamped in view
+			m.detailScroll = m.maxDetailScroll()
 			return m, nil
 		}
 		return m, m.moveSkillCursor(len(m.filtered) - 1)
@@ -409,11 +410,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyPageDown:
 		if m.showHelp {
-			m.helpScroll += pageStep(m.mainBodyHeight())
+			m.helpScroll = min(m.helpScroll+pageStep(m.mainBodyHeight()), m.maxHelpScroll())
 			return m, nil
 		}
 		if m.focusPane == paneDetails {
-			m.detailScroll += pageStep(m.detailContentHeight())
+			m.detailScroll = min(m.detailScroll+pageStep(m.detailContentHeight()), m.maxDetailScroll())
 			return m, nil
 		}
 		return m, m.moveSkillCursor(m.cursor + pageStep(m.skillListVisibleItems(m.skillListContentHeight())))
@@ -714,11 +715,11 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyDown:
 		if m.showHelp {
-			m.helpScroll++
+			m.helpScroll = min(m.helpScroll+1, m.maxHelpScroll())
 			return m, nil
 		}
 		if m.focusPane == paneDetails {
-			m.importPreviewScroll++
+			m.importPreviewScroll = min(m.importPreviewScroll+1, m.maxImportPreviewScroll())
 			return m, nil
 		}
 		if m.cursor < len(m.imports)-1 {
@@ -737,11 +738,11 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.moveImportCursor(0)
 	case keyBottom:
 		if m.showHelp {
-			m.helpScroll = 999999
+			m.helpScroll = m.maxHelpScroll()
 			return m, nil
 		}
 		if m.focusPane == paneDetails {
-			m.importPreviewScroll = 999999
+			m.importPreviewScroll = m.maxImportPreviewScroll()
 			return m, nil
 		}
 		return m, m.moveImportCursor(max(0, len(m.imports)-1))
@@ -757,11 +758,11 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.moveImportCursor(m.cursor - pageStep(m.importListVisibleItems(m.importContentHeight())))
 	case keyPageDown:
 		if m.showHelp {
-			m.helpScroll += pageStep(m.mainBodyHeight())
+			m.helpScroll = min(m.helpScroll+pageStep(m.mainBodyHeight()), m.maxHelpScroll())
 			return m, nil
 		}
 		if m.focusPane == paneDetails {
-			m.importPreviewScroll += pageStep(m.importPreviewContentHeight())
+			m.importPreviewScroll = min(m.importPreviewScroll+pageStep(m.importPreviewContentHeight()), m.maxImportPreviewScroll())
 			return m, nil
 		}
 		return m, m.moveImportCursor(m.cursor + pageStep(m.importListVisibleItems(m.importContentHeight())))
@@ -840,7 +841,7 @@ func (m Model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyDown:
 		if m.showHelp {
-			m.helpScroll++
+			m.helpScroll = min(m.helpScroll+1, m.maxHelpScroll())
 			return m, nil
 		}
 		if m.browseCursor < len(m.browseDirEntries) {
@@ -856,7 +857,7 @@ func (m Model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyBottom:
 		if m.showHelp {
-			m.helpScroll = 999999
+			m.helpScroll = m.maxHelpScroll()
 			return m, nil
 		}
 		m.browseCursor = len(m.browseDirEntries)
@@ -870,7 +871,7 @@ func (m Model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyPageDown:
 		if m.showHelp {
-			m.helpScroll += pageStep(m.mainBodyHeight())
+			m.helpScroll = min(m.helpScroll+pageStep(m.mainBodyHeight()), m.maxHelpScroll())
 			return m, nil
 		}
 		m.browseCursor = min(len(m.browseDirEntries), m.browseCursor+pageStep(m.importListVisibleItems(m.importContentHeight())))
@@ -969,7 +970,7 @@ func (m Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyDown:
 		if m.showHelp {
-			m.helpScroll++
+			m.helpScroll = min(m.helpScroll+1, m.maxHelpScroll())
 			return m, nil
 		}
 		if m.settingsField < settingsFieldCount-1 {
@@ -985,7 +986,7 @@ func (m Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyBottom:
 		if m.showHelp {
-			m.helpScroll = 999999
+			m.helpScroll = m.maxHelpScroll()
 			return m, nil
 		}
 		m.settingsField = settingsFieldCount - 1
@@ -999,7 +1000,7 @@ func (m Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyPageDown:
 		if m.showHelp {
-			m.helpScroll += pageStep(m.mainBodyHeight())
+			m.helpScroll = min(m.helpScroll+pageStep(m.mainBodyHeight()), m.maxHelpScroll())
 			return m, nil
 		}
 		next := int(m.settingsField) + pageStep(m.settingsVisibleFields(m.mainBodyHeight()))

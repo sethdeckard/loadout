@@ -271,18 +271,7 @@ func (m Model) renderWide(height int) string {
 	}
 
 	// Three-pane layout
-	leftW := m.width * 28 / 100
-	rightW := m.width * 24 / 100
-	centerW := m.width - leftW - rightW - 6 // borders
-	if leftW < 20 {
-		leftW = 20
-	}
-	if rightW < 18 {
-		rightW = 18
-	}
-	if centerW < 20 {
-		centerW = 20
-	}
+	leftW, centerW, rightW := m.wideColumnWidths()
 
 	leftBorder := borderStyle
 	centerBorder := borderStyle
@@ -493,31 +482,88 @@ func truncateToWindow(content string, height, offset int) (visible string, clamp
 	return strings.Join(lines[offset:end], "\n"), offset, offset > 0, end < total
 }
 
-func (m Model) renderDetails(width, height int) string {
-	if height <= 0 {
-		return ""
+// renderScrollWindow renders content into a height-row window starting at
+// offset, reserving a row for the ▲/▼ scroll indicators as needed. When the
+// content fits, it is clipped without indicators. The max offset this honors is
+// maxScrollOffset(content, height); Update clamps to that so the bottom is
+// reachable and scroll-up always moves.
+func renderScrollWindow(content string, height, offset int) string {
+	lines := strings.Split(content, "\n")
+	if len(lines) <= height {
+		return clipContent(content, height)
+	}
+
+	visibleHeight := height
+	hasAbove := offset > 0
+	if hasAbove {
+		visibleHeight-- // room for ▲
+	}
+	// Pessimistically reserve for ▼; reclaimed below if not needed.
+	visibleHeight--
+	if visibleHeight < 1 {
+		visibleHeight = 1
+	}
+
+	visible, _, _, moreBelow := truncateToWindow(content, visibleHeight, offset)
+	if !moreBelow && hasAbove {
+		visibleHeight++
+		visible, _, _, moreBelow = truncateToWindow(content, visibleHeight, offset)
+	}
+
+	var result strings.Builder
+	if hasAbove {
+		result.WriteString(scrollIndicator("▲") + "\n")
+	}
+	result.WriteString(visible)
+	if moreBelow {
+		result.WriteString("\n" + scrollIndicator("▼"))
+	}
+	return result.String()
+}
+
+// maxScrollOffset returns the smallest scroll offset at which renderScrollWindow
+// shows the last line (no ▼); clamping to it lets the bottom be reached while
+// every scroll-up still moves. Kept honest by TestMaxScrollOffset_MatchesRenderBottom.
+func maxScrollOffset(content string, height int) int {
+	// renderScrollWindow detects the bottom with a window that reserves a row
+	// for the ▲ indicator and pessimistically for ▼ (reclaimed afterwards).
+	return maxOffsetReserving(content, height, 2)
+}
+
+// maxHelpScrollOffset is maxScrollOffset for renderScrollableHelp, whose bottom
+// detection reserves only the ▲ row (no pessimistic ▼).
+func maxHelpScrollOffset(content string, height int) int {
+	return maxOffsetReserving(content, height, 1)
+}
+
+func maxOffsetReserving(content string, height, reserve int) int {
+	if height < 1 {
+		return 0
+	}
+	total := strings.Count(content, "\n") + 1
+	if total <= height {
+		return 0
+	}
+	window := height - reserve
+	if window < 1 {
+		window = 1
+	}
+	return max(0, total-window)
+}
+
+// detailScrollContent builds the wrapped, scrollable details content for the
+// selected skill. scrollable is false when no skill is selected (the empty-state
+// is handled by renderDetails). Both renderDetails and maxDetailScroll use this
+// so the rendered window and the scroll bound measure the same content.
+func (m Model) detailScrollContent(width int) (content string, scrollable bool) {
+	sel := m.selectedSkill()
+	if sel == nil {
+		return "", false
 	}
 
 	var b strings.Builder
 	b.WriteString(paneHeaderStyle.Render("Details"))
 	b.WriteString("\n\n")
-
-	sel := m.selectedSkill()
-	if sel == nil {
-		if m.isTrulyEmpty() {
-			b.WriteString(dimStyle.Render(Logo))
-			b.WriteString("\n\n")
-			b.WriteString(normalStyle.Render("No managed or unmanaged skills were found in this scope.") + "\n")
-			b.WriteString(dimStyle.Render("Press i to import a skill or d to run doctor.") + "\n")
-			const guidesURL = "https://github.com/sethdeckard/loadout/blob/main/docs/guides.md"
-			b.WriteString("\033]8;;" + guidesURL + "\033\\")
-			b.WriteString(guidesURL)
-			b.WriteString("\033]8;;\033\\")
-			return clipWrappedContent(b.String(), width, height)
-		}
-		b.WriteString(dimStyle.Render("Select a skill to view details"))
-		return clipWrappedContent(b.String(), width, height)
-	}
 	if m.selectedSkillIsUnmanaged() {
 		b.WriteString(infoBannerStyle.Render("`i` to import this unmanaged skill"))
 		b.WriteString("\n\n")
@@ -554,45 +600,35 @@ func (m Model) renderDetails(width, height int) string {
 		}
 	}
 
-	content := wrapContent(b.String(), width)
-	lines := strings.Split(content, "\n")
-	totalLines := len(lines)
+	return wrapContent(b.String(), width), true
+}
 
-	// Content fits — no scrolling needed
-	if totalLines <= height {
-		return clipContent(content, height)
+func (m Model) renderDetails(width, height int) string {
+	if height <= 0 {
+		return ""
 	}
 
-	// Reserve lines for scroll indicators
-	visibleHeight := height
-	hasAbove := m.detailScroll > 0
-	if hasAbove {
-		visibleHeight-- // room for ▲
-	}
-	// Pessimistically reserve for ▼; we check after truncation
-	visibleHeight--
-	if visibleHeight < 1 {
-		visibleHeight = 1
-	}
-
-	visible, _, _, moreBelow := truncateToWindow(content, visibleHeight, m.detailScroll)
-
-	if !moreBelow && hasAbove {
-		// We reserved a line for ▼ but don't need it — reclaim it
-		visibleHeight++
-		visible, _, _, moreBelow = truncateToWindow(content, visibleHeight, m.detailScroll)
-	}
-
-	var result strings.Builder
-	if hasAbove {
-		result.WriteString(scrollIndicator("▲") + "\n")
-	}
-	result.WriteString(visible)
-	if moreBelow {
-		result.WriteString("\n" + scrollIndicator("▼"))
+	content, scrollable := m.detailScrollContent(width)
+	if !scrollable {
+		var b strings.Builder
+		b.WriteString(paneHeaderStyle.Render("Details"))
+		b.WriteString("\n\n")
+		if m.isTrulyEmpty() {
+			b.WriteString(dimStyle.Render(Logo))
+			b.WriteString("\n\n")
+			b.WriteString(normalStyle.Render("No managed or unmanaged skills were found in this scope.") + "\n")
+			b.WriteString(dimStyle.Render("Press i to import a skill or d to run doctor.") + "\n")
+			const guidesURL = "https://github.com/sethdeckard/loadout/blob/main/docs/guides.md"
+			b.WriteString("\033]8;;" + guidesURL + "\033\\")
+			b.WriteString(guidesURL)
+			b.WriteString("\033]8;;\033\\")
+			return clipWrappedContent(b.String(), width, height)
+		}
+		b.WriteString(dimStyle.Render("Select a skill to view details"))
+		return clipWrappedContent(b.String(), width, height)
 	}
 
-	return result.String()
+	return renderScrollWindow(content, height, m.detailScroll)
 }
 
 func (m Model) renderStatus(width, height int) string {
@@ -705,8 +741,8 @@ func (m Model) renderScrollableHelp(text string, height int) string {
 	return b.String()
 }
 
-func (m Model) renderHelp(height int) string {
-	help := "\n" + Logo + `
+func mainHelpText() string {
+	return "\n" + Logo + `
 
   Navigation
     j/k, up/down    Move selection / scroll details
@@ -732,11 +768,10 @@ func (m Model) renderHelp(height int) string {
     ?               Toggle help
     q, ctrl+c       Quit
 `
-	return m.renderScrollableHelp(help, height)
 }
 
-func (m Model) renderImportHelp(height int) string {
-	help := `
+func importHelpText() string {
+	return `
   Loadout Import
 
   Navigation
@@ -765,11 +800,10 @@ func (m Model) renderImportHelp(height int) string {
     ?               Toggle help
     q, ctrl+c       Quit
 `
-	return m.renderScrollableHelp(help, height)
 }
 
-func (m Model) renderSettingsHelp(height int) string {
-	help := `
+func settingsHelpText() string {
+	return `
   Loadout Settings
 
   Navigation
@@ -788,7 +822,31 @@ func (m Model) renderSettingsHelp(height int) string {
     ?               Toggle help
     q, ctrl+c       Quit
 `
-	return m.renderScrollableHelp(help, height)
+}
+
+// activeHelpText returns the help text for the currently displayed help screen,
+// matching the View dispatch order (import, then settings, then main).
+func (m Model) activeHelpText() string {
+	switch {
+	case m.inImportScreen():
+		return importHelpText()
+	case m.inSettingsScreen():
+		return settingsHelpText()
+	default:
+		return mainHelpText()
+	}
+}
+
+func (m Model) renderHelp(height int) string {
+	return m.renderScrollableHelp(mainHelpText(), height)
+}
+
+func (m Model) renderImportHelp(height int) string {
+	return m.renderScrollableHelp(importHelpText(), height)
+}
+
+func (m Model) renderSettingsHelp(height int) string {
+	return m.renderScrollableHelp(settingsHelpText(), height)
 }
 
 const compactBodyThreshold = 6
@@ -1132,15 +1190,7 @@ func (m Model) renderImport(height int) string {
 		return borderStyle.Width(w).Height(contentHeight).Render(m.renderImportContent(w, contentHeight))
 	}
 
-	leftW := w * 38 / 100
-	if leftW < 28 {
-		leftW = 28
-	}
-	rightW := w - leftW - 2
-	if rightW < 30 {
-		rightW = 30
-		leftW = max(20, w-rightW-2)
-	}
+	leftW, rightW := m.importPaneWidths()
 	leftBorder := borderStyle
 	rightBorder := borderStyle
 	if m.focusPane == paneSkills {
@@ -1291,36 +1341,18 @@ func (m Model) renderImportPaneFooter() string {
 	})
 }
 
-func (m Model) renderImportPreviewPane(width, height int) string {
-	if height <= 0 {
-		return ""
+// importPreviewScrollContent builds the wrapped, scrollable import-preview
+// content. scrollable is false for the browse/loading/no-selection states, which
+// renderImportPreviewPane renders via clipWrappedContent. Shared with
+// maxImportPreviewScroll so the window and the scroll bound measure the same text.
+func (m Model) importPreviewScrollContent(width int) (content string, scrollable bool) {
+	if m.importBrowsing || m.loading || m.importPreview == nil {
+		return "", false
 	}
+
 	var b strings.Builder
 	b.WriteString(paneHeaderStyle.Render("Preview"))
 	b.WriteString("\n\n")
-	if m.importBrowsing {
-		if m.inProjectMode() {
-			b.WriteString(dimStyle.Render("Browse project files, then press s to scan this directory for skills.") + "\n")
-		} else {
-			b.WriteString(dimStyle.Render("Browse to a directory, then press s to scan for local skills.") + "\n")
-		}
-		if m.browseDir != "" {
-			b.WriteString("\n" + labelStyle.Render("Current Path") + "\n")
-			b.WriteString(valueStyle.Render(m.browseDir))
-		}
-		return clipWrappedContent(b.String(), width, height)
-	}
-
-	if m.loading {
-		b.WriteString(dimStyle.Render("Loading preview..."))
-		return clipWrappedContent(b.String(), width, height)
-	}
-
-	if m.importPreview == nil {
-		b.WriteString(dimStyle.Render("Select a discovered skill to preview before import."))
-		return clipWrappedContent(b.String(), width, height)
-	}
-
 	preview := m.importPreview
 	b.WriteString(labelStyle.Render("Name:        ") + valueStyle.Render(string(preview.Skill.Name)) + "\n")
 	b.WriteString(labelStyle.Render("Source:      ") + valueStyle.Render(preview.SourceDir) + "\n")
@@ -1342,41 +1374,39 @@ func (m Model) renderImportPreviewPane(width, height int) string {
 		}
 	}
 
-	content := wrapContent(b.String(), width)
-	lines := strings.Split(content, "\n")
-	totalLines := len(lines)
+	return wrapContent(b.String(), width), true
+}
 
-	if totalLines <= height {
-		return clipContent(content, height)
+func (m Model) renderImportPreviewPane(width, height int) string {
+	if height <= 0 {
+		return ""
 	}
 
-	visibleHeight := height
-	hasAbove := m.importPreviewScroll > 0
-	if hasAbove {
-		visibleHeight--
-	}
-	visibleHeight--
-	if visibleHeight < 1 {
-		visibleHeight = 1
-	}
-
-	visible, _, _, moreBelow := truncateToWindow(content, visibleHeight, m.importPreviewScroll)
-
-	if !moreBelow && hasAbove {
-		visibleHeight++
-		visible, _, _, moreBelow = truncateToWindow(content, visibleHeight, m.importPreviewScroll)
-	}
-
-	var result strings.Builder
-	if hasAbove {
-		result.WriteString(scrollIndicator("▲") + "\n")
-	}
-	result.WriteString(visible)
-	if moreBelow {
-		result.WriteString("\n" + scrollIndicator("▼"))
+	content, scrollable := m.importPreviewScrollContent(width)
+	if !scrollable {
+		var b strings.Builder
+		b.WriteString(paneHeaderStyle.Render("Preview"))
+		b.WriteString("\n\n")
+		switch {
+		case m.importBrowsing:
+			if m.inProjectMode() {
+				b.WriteString(dimStyle.Render("Browse project files, then press s to scan this directory for skills.") + "\n")
+			} else {
+				b.WriteString(dimStyle.Render("Browse to a directory, then press s to scan for local skills.") + "\n")
+			}
+			if m.browseDir != "" {
+				b.WriteString("\n" + labelStyle.Render("Current Path") + "\n")
+				b.WriteString(valueStyle.Render(m.browseDir))
+			}
+		case m.loading:
+			b.WriteString(dimStyle.Render("Loading preview..."))
+		default:
+			b.WriteString(dimStyle.Render("Select a discovered skill to preview before import."))
+		}
+		return clipWrappedContent(b.String(), width, height)
 	}
 
-	return result.String()
+	return renderScrollWindow(content, height, m.importPreviewScroll)
 }
 
 func formatTargets(targets []domain.Target) string {

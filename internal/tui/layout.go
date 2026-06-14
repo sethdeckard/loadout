@@ -77,6 +77,97 @@ func (m Model) importPreviewContentHeight() int {
 	return contentHeightForPane(bodyHeight, borderStyle)
 }
 
+// wideColumnWidths returns the three column widths of the wide (3-pane) layout.
+// Shared by renderWide and detailContentWidth so the rendered pane and the
+// scroll-bound measurement agree on the center width.
+func (m Model) wideColumnWidths() (leftW, centerW, rightW int) {
+	leftW = m.width * 28 / 100
+	rightW = m.width * 24 / 100
+	centerW = m.width - leftW - rightW - 6 // borders
+	if leftW < 20 {
+		leftW = 20
+	}
+	if rightW < 18 {
+		rightW = 18
+	}
+	if centerW < 20 {
+		centerW = 20
+	}
+	return leftW, centerW, rightW
+}
+
+// importPaneWidths returns the left/right widths of the side-by-side import
+// layout. Shared by renderImport and importPreviewContentWidth.
+func (m Model) importPaneWidths() (leftW, rightW int) {
+	w := max(1, m.width-4)
+	leftW = w * 38 / 100
+	if leftW < 28 {
+		leftW = 28
+	}
+	rightW = w - leftW - 2
+	if rightW < 30 {
+		rightW = 30
+		leftW = max(20, w-rightW-2)
+	}
+	return leftW, rightW
+}
+
+// detailContentWidth is the wrap width of the details pane, matching the active
+// layout (narrow stacked vs wide center column). Compact falls back to the same
+// narrow width; maxDetailScroll guards the not-scrollable cases.
+func (m Model) detailContentWidth() int {
+	if m.width < compactWidthThreshold {
+		return max(1, m.width-4)
+	}
+	_, centerW, _ := m.wideColumnWidths()
+	return centerW
+}
+
+// importPreviewContentWidth is the wrap width of the import preview pane,
+// matching importPreviewContentHeight's stacked vs side-by-side branch.
+func (m Model) importPreviewContentWidth() int {
+	w := max(1, m.width-4)
+	if w < importSplitWidth {
+		return w
+	}
+	_, rightW := m.importPaneWidths()
+	return rightW
+}
+
+// maxDetailScroll is the largest valid detailScroll offset for the current
+// content and pane size (0 when nothing scrolls).
+func (m Model) maxDetailScroll() int {
+	content, scrollable := m.detailScrollContent(m.detailContentWidth())
+	if !scrollable {
+		return 0
+	}
+	return maxScrollOffset(content, m.detailContentHeight())
+}
+
+// maxImportPreviewScroll is the largest valid importPreviewScroll offset.
+func (m Model) maxImportPreviewScroll() int {
+	content, scrollable := m.importPreviewScrollContent(m.importPreviewContentWidth())
+	if !scrollable {
+		return 0
+	}
+	return maxScrollOffset(content, m.importPreviewContentHeight())
+}
+
+// maxHelpScroll is the largest valid helpScroll offset for the active help text.
+func (m Model) maxHelpScroll() int {
+	content := wrapContent(normalStyle.Render(m.activeHelpText()), m.width)
+	return maxHelpScrollOffset(content, m.mainBodyHeight())
+}
+
+// clampScrollOffsets re-bounds every scroll offset into [0, max]. Called after
+// the window size changes, since a previously valid offset can exceed the new
+// max (the per-key handlers already clamp on the way down).
+func (m *Model) clampScrollOffsets() {
+	m.detailScroll = min(max(0, m.detailScroll), m.maxDetailScroll())
+	m.importPreviewScroll = min(max(0, m.importPreviewScroll), m.maxImportPreviewScroll())
+	m.helpScroll = min(max(0, m.helpScroll), m.maxHelpScroll())
+}
+
 func (m Model) importListVisibleItems(height int) int {
 	bodyHeight := max(1, height-countLines(m.renderImportPaneFooter()))
 	if m.importBrowsing {

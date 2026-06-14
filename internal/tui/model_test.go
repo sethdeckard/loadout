@@ -1854,8 +1854,18 @@ func TestFocus_LeftMovesToSkills(t *testing.T) {
 	}
 }
 
+// withLongDetailPreview attaches an overflowing preview to the selected skill so
+// the details pane is actually scrollable.
+func withLongDetailPreview(m Model) Model {
+	m.preview = &app.SkillPreview{
+		Skill:    m.filtered[0].Skill,
+		Markdown: strings.Repeat("detail preview line\n", 200),
+	}
+	return m
+}
+
 func TestFocus_JKScrollsDetails(t *testing.T) {
-	m := testModel()
+	m := withLongDetailPreview(testModel())
 	m.focusPane = paneDetails
 	m.detailScroll = 0
 
@@ -1873,7 +1883,7 @@ func TestFocus_JKScrollsDetails(t *testing.T) {
 }
 
 func TestFocus_CtrlDPagesDetails(t *testing.T) {
-	m := testModel()
+	m := withLongDetailPreview(testModel())
 	m.focusPane = paneDetails
 
 	step := pageStep(m.detailContentHeight())
@@ -2050,6 +2060,202 @@ func TestTruncateToWindow_ClampOffset(t *testing.T) {
 	}
 	if below {
 		t.Error("expected moreBelow=false at bottom")
+	}
+}
+
+func pressRune(m Model, s string) Model {
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)})
+	return mm.(Model)
+}
+
+func TestDetailScroll_BottomThenUp(t *testing.T) {
+	m := withLongDetailPreview(testModel())
+	m.focusPane = paneDetails
+
+	model := pressRune(m, "G")
+	maxd := model.maxDetailScroll()
+	if maxd <= 0 {
+		t.Fatalf("expected a scrollable details pane, maxDetailScroll = %d", maxd)
+	}
+	if model.detailScroll != maxd {
+		t.Fatalf("detailScroll after G = %d, want max %d", model.detailScroll, maxd)
+	}
+	if model.detailScroll >= 999999 {
+		t.Fatalf("detailScroll should be a real bound, not a sentinel: %d", model.detailScroll)
+	}
+
+	w, h := model.detailContentWidth(), model.detailContentHeight()
+	before := model.renderDetails(w, h)
+
+	model = pressRune(model, "k")
+	if model.detailScroll != maxd-1 {
+		t.Fatalf("detailScroll after up = %d, want %d", model.detailScroll, maxd-1)
+	}
+	if after := model.renderDetails(w, h); after == before {
+		t.Fatalf("scrolling up from the bottom must change the rendered output")
+	}
+}
+
+func TestDetailScroll_DownNeverExceedsMax(t *testing.T) {
+	m := withLongDetailPreview(testModel())
+	m.focusPane = paneDetails
+	maxd := m.maxDetailScroll()
+
+	model := m
+	for i := 0; i < 300; i++ {
+		model = pressRune(model, "j")
+		if model.detailScroll > maxd {
+			t.Fatalf("detailScroll %d exceeded max %d", model.detailScroll, maxd)
+		}
+	}
+	if model.detailScroll != maxd {
+		t.Fatalf("after holding down, detailScroll = %d, want max %d", model.detailScroll, maxd)
+	}
+}
+
+func importPreviewModel() Model {
+	m := testModel()
+	m.screen = screenImport
+	m.focusPane = paneDetails
+	m.importPreview = &app.ImportPreview{
+		Skill:     domain.Skill{Name: "shared-skill", Targets: []domain.Target{domain.TargetClaude, domain.TargetCodex}},
+		Markdown:  strings.Repeat("import preview line\n", 200),
+		SourceDir: testShared,
+		Ready:     true,
+	}
+	return m
+}
+
+func TestImportPreviewScroll_BottomThenUp(t *testing.T) {
+	m := importPreviewModel()
+
+	model := pressRune(m, "G")
+	maxp := model.maxImportPreviewScroll()
+	if maxp <= 0 {
+		t.Fatalf("expected a scrollable import preview, maxImportPreviewScroll = %d", maxp)
+	}
+	if model.importPreviewScroll != maxp {
+		t.Fatalf("importPreviewScroll after G = %d, want max %d", model.importPreviewScroll, maxp)
+	}
+
+	w, h := model.importPreviewContentWidth(), model.importPreviewContentHeight()
+	before := model.renderImportPreviewPane(w, h)
+
+	model = pressRune(model, "k")
+	if model.importPreviewScroll != maxp-1 {
+		t.Fatalf("importPreviewScroll after up = %d, want %d", model.importPreviewScroll, maxp-1)
+	}
+	if after := model.renderImportPreviewPane(w, h); after == before {
+		t.Fatalf("scrolling up from the bottom must change the rendered output")
+	}
+}
+
+func TestImportPreviewScroll_DownNeverExceedsMax(t *testing.T) {
+	m := importPreviewModel()
+	maxp := m.maxImportPreviewScroll()
+
+	model := m
+	for i := 0; i < 300; i++ {
+		model = pressRune(model, "j")
+		if model.importPreviewScroll > maxp {
+			t.Fatalf("importPreviewScroll %d exceeded max %d", model.importPreviewScroll, maxp)
+		}
+	}
+	if model.importPreviewScroll != maxp {
+		t.Fatalf("after holding down, importPreviewScroll = %d, want max %d", model.importPreviewScroll, maxp)
+	}
+}
+
+func TestHelpScroll_BottomThenUp(t *testing.T) {
+	screens := []struct {
+		name   string
+		screen screenID
+	}{
+		{"main", screenInventory},
+		{"import", screenImport},
+		{"settings", screenSettings},
+	}
+	for _, tc := range screens {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testModel()
+			m.screen = tc.screen
+			m.showHelp = true
+			m.height = 12 // force the help text to overflow
+
+			model := pressRune(m, "G")
+			maxh := model.maxHelpScroll()
+			if maxh <= 0 {
+				t.Fatalf("expected scrollable help, maxHelpScroll = %d", maxh)
+			}
+			if model.helpScroll != maxh {
+				t.Fatalf("helpScroll after G = %d, want max %d", model.helpScroll, maxh)
+			}
+			model = pressRune(model, "k")
+			if model.helpScroll != maxh-1 {
+				t.Fatalf("helpScroll after up = %d, want %d", model.helpScroll, maxh-1)
+			}
+		})
+	}
+}
+
+func TestScrollClampOnResize(t *testing.T) {
+	t.Run("grow shrinks max and clamps offset", func(t *testing.T) {
+		m := withLongDetailPreview(testModel())
+		m.width, m.height = 60, 12
+		m.focusPane = paneDetails
+
+		model := pressRune(m, "G")
+		smallMax := model.maxDetailScroll()
+		if smallMax <= 0 {
+			t.Fatalf("expected scrollable details at small size")
+		}
+
+		m2, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+		model = m2.(Model)
+		bigMax := model.maxDetailScroll()
+		if bigMax >= smallMax {
+			t.Fatalf("growing the window should reduce max scroll (small=%d big=%d)", smallMax, bigMax)
+		}
+		if model.detailScroll > bigMax {
+			t.Fatalf("offset %d left stranded above new max %d after resize", model.detailScroll, bigMax)
+		}
+		if model.detailScroll != bigMax {
+			t.Fatalf("offset should clamp to the new bottom: got %d want %d", model.detailScroll, bigMax)
+		}
+	})
+
+	t.Run("content fits after resize clamps to zero", func(t *testing.T) {
+		m := testModel() // short details content
+		m.focusPane = paneDetails
+		m.detailScroll = 50 // stale, out of range
+
+		m2, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+		model := m2.(Model)
+		if model.detailScroll != 0 {
+			t.Fatalf("offset should clamp to 0 when content fits, got %d", model.detailScroll)
+		}
+	})
+}
+
+func TestMaxScrollOffset_MatchesRenderBottom(t *testing.T) {
+	m := withLongDetailPreview(testModel())
+	width, height := m.detailContentWidth(), m.detailContentHeight()
+	content, ok := m.detailScrollContent(width)
+	if !ok {
+		t.Fatal("expected scrollable content")
+	}
+	maxd := maxScrollOffset(content, height)
+	if maxd <= 0 {
+		t.Fatalf("expected overflowing content, maxScrollOffset = %d", maxd)
+	}
+
+	// At the max offset the render is at the bottom: no ▼ indicator.
+	if atBottom := renderScrollWindow(content, height, maxd); strings.Contains(atBottom, "▼") {
+		t.Errorf("max offset should be the bottom (no ▼):\n%s", atBottom)
+	}
+	// One row above the max still has content below: ▼ present.
+	if notBottom := renderScrollWindow(content, height, maxd-1); !strings.Contains(notBottom, "▼") {
+		t.Errorf("offset below max should still show ▼:\n%s", notBottom)
 	}
 }
 

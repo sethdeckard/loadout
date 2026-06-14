@@ -36,7 +36,12 @@ var importCmd = &cobra.Command{
 			return err
 		}
 
-		result, err := svc.ImportPath(args[0], targets, importCommit)
+		autoCommit := svc.Config.RepoActions.ImportAutoCommit
+		if cmd.Flags().Changed("commit") {
+			autoCommit = importCommit
+		}
+
+		result, err := svc.ImportPath(args[0], targets, autoCommit)
 		if err != nil {
 			return err
 		}

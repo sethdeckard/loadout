@@ -1,9 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.0] - 2026-06-14
 
 ### Features
 
+- Pressing `enter` with the details pane focused opens a modal showing the selected skill's per-target config from `skill.json`, including a resolved Codex model-invocation line; any key closes it
 - Codex skills can declare an invocation policy in `skill.json` that Loadout materializes as `<skill>/agents/openai.yaml` on every Codex install and in shared `codex-build/` output. The native shape is `"codex": { "policy": { "allow_implicit_invocation": false } }`; `disable-model-invocation` is accepted as a Claude-style compatibility alias, with the native key winning when both are present
 - `loadout import` captures the policy from an existing `agents/openai.yaml` back into the generated `skill.json`, preserving any policy already declared there
 - Merging into an existing `agents/openai.yaml` preserves unrelated fields (`interface`, `dependencies`, other `policy` keys)
@@ -11,6 +12,11 @@
 ### Changes
 
 - YAML frontmatter parsing and serialization now use a YAML library instead of the previous hand-rolled parser. Generated frontmatter scalars are only quoted when required (e.g. `allowed-tools: Read, Grep` instead of `allowed-tools: "Read, Grep"`); values still round-trip losslessly. Codex invocation-policy keys are filtered out of generated Codex `SKILL.md` frontmatter
+
+### Bug Fixes
+
+- `loadout import` now honors the `import_auto_commit` config setting; previously it left the imported skill uncommitted unless `--commit` was passed explicitly
+- Scrolling the details, import preview, or help panes to the very bottom no longer locks scrolling in place; scroll-up works again from the bottom
 
 ## [0.4.0] - 2026-05-03
 

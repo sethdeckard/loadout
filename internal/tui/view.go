@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -34,6 +35,8 @@ func (m Model) View() string {
 		switch {
 		case m.commitPromptActive() || m.deleteConfirming() || m.bulkImportConfirming():
 			body = m.renderModalBody(bodyHeight)
+		case m.configModalActive():
+			body = m.renderConfigModalBody(bodyHeight)
 		case m.inImportScreen() && m.showHelp:
 			body = m.renderImportHelp(bodyHeight)
 		case m.inImportScreen():
@@ -57,7 +60,7 @@ func (m Model) View() string {
 	}
 	parts = append(parts, footer)
 	view := strings.Join(parts, "\n")
-	if m.commitPromptActive() || m.deleteConfirming() {
+	if m.commitPromptActive() || m.deleteConfirming() || m.configModalActive() {
 		return modalBackdropStyle.Render(view)
 	}
 	return view
@@ -103,6 +106,13 @@ func shortenHomePath(path string) string {
 }
 
 func (m Model) renderFooter() string {
+	if m.configModalActive() {
+		keys := []struct{ key, label string }{
+			{"any key", "close"},
+		}
+		return renderFooterKeys(m.width, keys, "")
+	}
+
 	if m.showHelp {
 		keys := []struct{ key, label string }{
 			{"j/k", "scroll"},
@@ -207,6 +217,16 @@ func (m Model) renderFooter() string {
 			{"?", "help"},
 			{"q", "quit"},
 		}
+	}
+
+	// Advertise the config modal only while the details pane is focused, since
+	// that is the only place enter opens it.
+	if m.focusPane == paneDetails && m.selectedSkill() != nil {
+		withConfig := make([]struct{ key, label string }, 0, len(secondaryKeys)+1)
+		withConfig = append(withConfig, secondaryKeys[0]) // h/l focus
+		withConfig = append(withConfig, struct{ key, label string }{"enter", "config"})
+		withConfig = append(withConfig, secondaryKeys[1:]...)
+		secondaryKeys = withConfig
 	}
 
 	return renderFooterKeys(m.width, secondaryKeys, m.footerMessage())
@@ -325,6 +345,106 @@ func (m Model) renderModalBody(height int) string {
 
 	card := modalStyle.Width(cardWidth).Render(content)
 	return lipgloss.Place(w, height, lipgloss.Center, lipgloss.Center, card)
+}
+
+func (m Model) renderConfigModalBody(height int) string {
+	w := max(1, m.width-4)
+	cardWidth := min(72, max(42, w-8))
+	if cardWidth > w {
+		cardWidth = w
+	}
+	content := m.renderConfigContent(cardWidth-6, max(8, min(height-4, 20)))
+	card := modalStyle.Width(cardWidth).Render(content)
+	return lipgloss.Place(w, height, lipgloss.Center, lipgloss.Center, card)
+}
+
+func (m Model) renderConfigContent(width, height int) string {
+	var b strings.Builder
+	b.WriteString(modalTitleStyle.Render("Skill Config"))
+	b.WriteString("\n\n")
+
+	sel := m.selectedSkill()
+	if sel == nil {
+		b.WriteString(dimStyle.Render("No skill selected"))
+		return clipWrappedContent(b.String(), width, height)
+	}
+
+	s := sel.Skill
+	b.WriteString(labelStyle.Render("Name:        ") + valueStyle.Render(string(s.Name)) + "\n")
+	targets := make([]string, len(s.Targets))
+	for i, t := range s.Targets {
+		targets[i] = string(t)
+	}
+	b.WriteString(labelStyle.Render("Supports:    ") + valueStyle.Render(strings.Join(targets, ", ")) + "\n")
+
+	b.WriteString(m.renderTargetConfig("Claude", domain.TargetClaude, s))
+	b.WriteString(m.renderTargetConfig("Codex", domain.TargetCodex, s))
+
+	return clipWrappedContent(b.String(), width, height)
+}
+
+// renderTargetConfig renders one target's config block (the skill.json claude/
+// codex map). For Codex it prepends a resolved model-invocation line derived
+// from the policy keys. Returns "" when the skill does not support the target.
+func (m Model) renderTargetConfig(heading string, target domain.Target, s domain.Skill) string {
+	if !s.SupportsTarget(target) {
+		return ""
+	}
+	meta := s.TargetMeta(target)
+
+	var b strings.Builder
+	b.WriteString("\n" + labelStyle.Render(heading) + "\n")
+
+	if target == domain.TargetCodex {
+		if allowImplicit, present := domain.ResolveCodexPolicy(meta); present {
+			state := "disabled"
+			if allowImplicit {
+				state = "enabled (implicit allowed)"
+			}
+			b.WriteString("  " + dimStyle.Render("Model invocation: ") + valueStyle.Render(state) + "\n")
+		}
+	}
+
+	if len(meta) == 0 {
+		b.WriteString("  " + dimStyle.Render("(no config)") + "\n")
+		return b.String()
+	}
+	writeConfigMap(&b, meta, 1)
+	return b.String()
+}
+
+// writeConfigMap renders a config map as indented "key: value" lines, sorted by
+// key for stable output and recursing into nested maps (e.g. the Codex policy).
+func writeConfigMap(b *strings.Builder, meta map[string]any, indent int) {
+	keys := make([]string, 0, len(meta))
+	for k := range meta {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	pad := strings.Repeat("  ", indent)
+	for _, k := range keys {
+		if nested, ok := meta[k].(map[string]any); ok {
+			b.WriteString(pad + labelStyle.Render(k+":") + "\n")
+			writeConfigMap(b, nested, indent+1)
+			continue
+		}
+		b.WriteString(pad + labelStyle.Render(k+": ") + valueStyle.Render(formatConfigValue(meta[k])) + "\n")
+	}
+}
+
+func formatConfigValue(v any) string {
+	switch val := v.(type) {
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case string:
+		return val
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 func (m Model) renderNarrow(height int) string {
@@ -753,6 +873,7 @@ func mainHelpText() string {
     esc             Clear filter / close help
 
   Actions
+    enter           View skill config (details pane focused)
     c/x             Equip or unequip the visible target rows
     a               Equip all visible supported targets
     i               Open import for current scope

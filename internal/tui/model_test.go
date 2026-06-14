@@ -3645,3 +3645,85 @@ func assertViewFitsHeight(t *testing.T, m Model) {
 		t.Fatalf("view height = %d, want <= %d\nview:\n%s", h, m.height, view)
 	}
 }
+
+// configModel returns a model whose selected skill (swift-refactor) carries
+// per-target config, including a Codex policy that disables implicit invocation.
+func configModel() Model {
+	m := testModel()
+	m.skills[0].Skill.Claude = map[string]any{"allowed-tools": "Read, Grep"}
+	m.skills[0].Skill.Codex = map[string]any{
+		"policy": map[string]any{"allow_implicit_invocation": false},
+	}
+	m.applyFilter()
+	m.focusPane = paneDetails
+	return m
+}
+
+func TestConfigModal_EnterOpensWhenDetailsFocused(t *testing.T) {
+	m := configModel()
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := next.(Model)
+
+	if !model.configModalActive() {
+		t.Fatal("config modal should be active after enter with details focused")
+	}
+	view := model.View()
+	if !strings.Contains(view, "Skill Config") {
+		t.Errorf("view missing modal title; got:\n%s", view)
+	}
+	if !strings.Contains(view, "Codex") {
+		t.Errorf("view missing Codex heading; got:\n%s", view)
+	}
+}
+
+func TestConfigModal_EnterIgnoredWhenSkillsFocused(t *testing.T) {
+	m := configModel()
+	m.focusPane = paneSkills
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := next.(Model)
+
+	if model.configModalActive() {
+		t.Error("config modal should not open when skills pane is focused")
+	}
+}
+
+func TestConfigModal_AnyKeyCloses(t *testing.T) {
+	m := configModel()
+	m.showConfig = true
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model := next.(Model)
+
+	if model.configModalActive() {
+		t.Error("config modal should close on any key")
+	}
+}
+
+func TestConfigModal_ShowsCodexInvocationDisabled(t *testing.T) {
+	m := configModel()
+	m.showConfig = true
+
+	view := m.View()
+	if !strings.Contains(view, "Model invocation:") {
+		t.Errorf("expected model invocation line; got:\n%s", view)
+	}
+	if !strings.Contains(view, "disabled") {
+		t.Errorf("expected disabled state; got:\n%s", view)
+	}
+}
+
+func TestConfigModal_HintVisibleOnlyWhenDetailsFocused(t *testing.T) {
+	m := configModel()
+
+	m.focusPane = paneDetails
+	if footer := m.renderFooter(); !strings.Contains(footer, "config") {
+		t.Errorf("details-focused footer should show the config hint; got:\n%s", footer)
+	}
+
+	m.focusPane = paneSkills
+	if footer := m.renderFooter(); strings.Contains(footer, "config") {
+		t.Errorf("skills-focused footer should not show the config hint; got:\n%s", footer)
+	}
+}

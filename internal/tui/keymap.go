@@ -27,6 +27,7 @@ const (
 	keyRight
 	keyPageUp
 	keyPageDown
+	keyShowConfig
 	keyQuit
 )
 
@@ -74,6 +75,8 @@ func classifyKey(msg tea.KeyMsg) keyAction {
 		return keyPageUp
 	case "ctrl+d":
 		return keyPageDown
+	case "enter":
+		return keyShowConfig
 	case "q", "ctrl+c":
 		return keyQuit
 	}

@@ -92,6 +92,7 @@ type Model struct {
 	filter              string
 	filtering           bool
 	showHelp            bool
+	showConfig          bool
 	helpScroll          int
 	status              string
 	err                 error
@@ -319,6 +320,10 @@ func (m Model) deleteConfirming() bool {
 
 func (m Model) commitPromptActive() bool {
 	return m.commitPrompt != nil
+}
+
+func (m Model) configModalActive() bool {
+	return m.showConfig
 }
 
 func (m *Model) clearDeleteState() {

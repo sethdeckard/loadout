@@ -20,6 +20,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.configModalActive() {
+			return m.handleConfigModalKey(msg)
+		}
 		if m.commitPromptActive() {
 			return m.handleCommitPromptKey(msg)
 		}
@@ -584,8 +587,24 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyDelete:
 		return m, m.beginDeleteForSelection()
+
+	case keyShowConfig:
+		if m.focusPane == paneDetails && !m.showHelp && m.selectedSkill() != nil {
+			m.showConfig = true
+		}
+		return m, nil
 	}
 
+	return m, nil
+}
+
+// handleConfigModalKey dismisses the config modal on any key press; ctrl+c still
+// quits so the usual exit shortcut keeps working while the modal is open.
+func (m Model) handleConfigModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "ctrl+c" {
+		return m, tea.Quit
+	}
+	m.showConfig = false
 	return m, nil
 }
 

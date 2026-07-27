@@ -409,7 +409,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.detailScroll = max(0, m.detailScroll-pageStep(m.detailContentHeight()))
 			return m, nil
 		}
-		return m, m.moveSkillCursor(m.cursor - pageStep(m.skillListVisibleItems(m.skillListContentHeight())))
+		return m, m.moveSkillCursor(m.cursor - pageStep(m.skillListRows()))
 
 	case keyPageDown:
 		if m.showHelp {
@@ -420,7 +420,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.detailScroll = min(m.detailScroll+pageStep(m.detailContentHeight()), m.maxDetailScroll())
 			return m, nil
 		}
-		return m, m.moveSkillCursor(m.cursor + pageStep(m.skillListVisibleItems(m.skillListContentHeight())))
+		return m, m.moveSkillCursor(m.cursor + pageStep(m.skillListRows()))
 
 	case keyLeft:
 		m.focusPane = paneSkills
@@ -774,7 +774,7 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.importPreviewScroll = max(0, m.importPreviewScroll-pageStep(m.importPreviewContentHeight()))
 			return m, nil
 		}
-		return m, m.moveImportCursor(m.cursor - pageStep(m.importListVisibleItems(m.importContentHeight())))
+		return m, m.moveImportCursor(m.cursor - pageStep(m.importListRows()))
 	case keyPageDown:
 		if m.showHelp {
 			m.helpScroll = min(m.helpScroll+pageStep(m.mainBodyHeight()), m.maxHelpScroll())
@@ -784,7 +784,7 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.importPreviewScroll = min(m.importPreviewScroll+pageStep(m.importPreviewContentHeight()), m.maxImportPreviewScroll())
 			return m, nil
 		}
-		return m, m.moveImportCursor(m.cursor + pageStep(m.importListVisibleItems(m.importContentHeight())))
+		return m, m.moveImportCursor(m.cursor + pageStep(m.importListRows()))
 	case keyLeft:
 		m.focusPane = paneSkills
 		return m, nil
@@ -886,14 +886,14 @@ func (m Model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpScroll = max(0, m.helpScroll-pageStep(m.mainBodyHeight()))
 			return m, nil
 		}
-		m.browseCursor = max(0, m.browseCursor-pageStep(m.importListVisibleItems(m.importContentHeight())))
+		m.browseCursor = max(0, m.browseCursor-pageStep(m.importListRows()))
 		return m, nil
 	case keyPageDown:
 		if m.showHelp {
 			m.helpScroll = min(m.helpScroll+pageStep(m.mainBodyHeight()), m.maxHelpScroll())
 			return m, nil
 		}
-		m.browseCursor = min(len(m.browseDirEntries), m.browseCursor+pageStep(m.importListVisibleItems(m.importContentHeight())))
+		m.browseCursor = min(len(m.browseDirEntries), m.browseCursor+pageStep(m.importListRows()))
 		return m, nil
 	case keyHelp:
 		m.showHelp = !m.showHelp

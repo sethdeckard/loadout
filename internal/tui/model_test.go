@@ -187,7 +187,7 @@ func TestNavigation_CtrlDPagesSkillList(t *testing.T) {
 	m := testModel()
 	addTestSkills(&m, 24)
 
-	step := pageStep(m.skillListVisibleItems(m.skillListContentHeight()))
+	step := pageStep(m.skillListRows())
 	m2, _ := m.Update(ctrlKey(tea.KeyCtrlD))
 	model := m2.(Model)
 
@@ -537,6 +537,411 @@ func TestRenderSkillList_KeepsCursorVisibleWhenPaged(t *testing.T) {
 	}
 }
 
+// skillRowLines returns the rendered lines carrying a skill checkbox, ignoring
+// the pane title, blank padding, and the action panel.
+func skillRowLines(pane string) []string {
+	var rows []string
+	for _, line := range strings.Split(pane, "\n") {
+		body := strings.TrimPrefix(strings.TrimPrefix(line, "> "), "  ")
+		if strings.HasPrefix(body, "[") {
+			rows = append(rows, line)
+		}
+	}
+	return rows
+}
+
+// addLongNamedSkill appends a skill whose name cannot fit a narrow pane and
+// returns its index in m.filtered.
+func addLongNamedSkill(t *testing.T, m *Model, name string) int {
+	t.Helper()
+
+	m.skills = append(m.skills, app.SkillView{
+		Skill: domain.Skill{
+			Name:    domain.SkillName(name),
+			Targets: []domain.Target{domain.TargetClaude},
+			Path:    "skills/" + name,
+		},
+		Flags: []reconcile.StatusFlag{reconcile.StatusInactive},
+	})
+	m.applyFilter()
+
+	for i, v := range m.filtered {
+		if string(v.Skill.Name) == name {
+			return i
+		}
+	}
+	t.Fatalf("skill %q not found after applyFilter", name)
+	return 0
+}
+
+func TestRenderSkillList_KeepsCursorVisibleAcrossPaneSizes(t *testing.T) {
+	for _, width := range []int{20, 28, 40} {
+		for height := 7; height <= 20; height++ {
+			for _, tt := range []struct {
+				name   string
+				cursor func(total int) int
+			}{
+				{"first", func(int) int { return 0 }},
+				{"middle", func(total int) int { return total / 2 }},
+				{"last", func(total int) int { return total - 1 }},
+			} {
+				m := testModel()
+				addTestSkills(&m, 24)
+				m.cursor = tt.cursor(len(m.filtered))
+
+				pane := m.renderSkillList(width, height)
+				want := "> [ ] " + string(m.filtered[m.cursor].Skill.Name)
+				if !strings.Contains(pane, want) {
+					t.Errorf("width=%d height=%d cursor=%s: %q missing:\n%s",
+						width, height, tt.name, want, pane)
+				}
+			}
+		}
+	}
+}
+
+// TestRenderSkillList_DrawsEveryBudgetedRow guards the defect this fix targets:
+// the render loop used to abort on a byte-length heuristic, silently drawing
+// fewer rows than the layout budgeted and dropping the cursor with them.
+func TestRenderSkillList_DrawsEveryBudgetedRow(t *testing.T) {
+	for _, width := range []int{20, 28, 40} {
+		for height := 7; height <= 24; height++ {
+			m := testModel()
+			addTestSkills(&m, 24)
+
+			pane := m.renderSkillList(width, height)
+			budget, _ := m.skillListPaneBudget(width, height)
+			want := min(len(m.filtered), budget)
+			if got := len(skillRowLines(pane)); got != want {
+				t.Errorf("width=%d height=%d: drew %d rows, want %d:\n%s",
+					width, height, got, want, pane)
+			}
+		}
+	}
+}
+
+func TestRenderSkillList_LongNamesRenderOneLine(t *testing.T) {
+	m := testModel()
+	addTestSkills(&m, 12)
+	long := strings.Repeat("x", 40)
+	m.cursor = addLongNamedSkill(t, &m, long)
+
+	const width, height = 28, 20
+	pane := m.renderSkillList(width, height)
+
+	// width - skillRowPrefixWidth cells of name, the last spent on the ellipsis.
+	want := "> [ ] " + strings.Repeat("x", width-skillRowPrefixWidth-1) + "…"
+	if !strings.Contains(pane, want) {
+		t.Errorf("long name should be truncated to one line, want %q:\n%s", want, pane)
+	}
+	if strings.Contains(pane, long) {
+		t.Errorf("untruncated name should not appear:\n%s", pane)
+	}
+
+	budget, _ := m.skillListPaneBudget(width, height)
+	if got, want := len(skillRowLines(pane)), min(len(m.filtered), budget); got != want {
+		t.Errorf("drew %d rows, want %d (a wrapped row would break the budget):\n%s", got, want, pane)
+	}
+}
+
+func TestRenderSkillList_PinsActionsToColumnBottom(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		count int
+	}{
+		{"list shorter than pane", 3},
+		{"list overflows pane", 40},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := testModel()
+			addTestSkills(&m, tt.count)
+
+			const width, height = 28, 20
+			pane := m.renderSkillList(width, height)
+
+			if got := lipgloss.Height(pane); got != height {
+				t.Errorf("pane height = %d, want exactly %d:\n%s", got, height, pane)
+			}
+			lines := strings.Split(pane, "\n")
+			last := strings.TrimRight(lines[len(lines)-1], " ")
+			if !strings.Contains(last, "D delete repo copy") {
+				t.Errorf("action panel should sit on the column's bottom edge, last line = %q:\n%s", last, pane)
+			}
+		})
+	}
+}
+
+func TestRenderSkillList_TopRuleSpansColumn(t *testing.T) {
+	m := testModel()
+	addTestSkills(&m, 24)
+
+	const width = 28
+	pane := m.renderSkillList(width, 20)
+
+	var ruleWidths []int
+	for _, line := range strings.Split(pane, "\n") {
+		trimmed := strings.TrimRight(line, " ")
+		if trimmed != "" && strings.Trim(trimmed, "─") == "" {
+			ruleWidths = append(ruleWidths, lipgloss.Width(trimmed))
+		}
+	}
+
+	want := []int{width, paneFooterGroupRuleWidth}
+	if len(ruleWidths) != len(want) || ruleWidths[0] != want[0] || ruleWidths[1] != want[1] {
+		t.Errorf("rule widths = %v, want %v (list/actions joint spans the column, group rule stays short):\n%s",
+			ruleWidths, want, pane)
+	}
+}
+
+func TestRenderSkillList_FooterSurvivesNarrowWidth(t *testing.T) {
+	m := testModel()
+	addTestSkills(&m, 24)
+
+	// At width 20 the action labels wrap, so an unwrapped line count would
+	// under-reserve and truncate the panel's last rows.
+	pane := m.renderSkillList(20, 24)
+	for _, want := range []string{"equip Claude", "delete repo copy"} {
+		if !strings.Contains(pane, want) {
+			t.Errorf("narrow pane dropped %q from the action panel:\n%s", want, pane)
+		}
+	}
+}
+
+// TestRenderSkillList_LongFilterDoesNotHideCursor covers the filter echo, which
+// is unbounded user input. A wrapping filter must shrink the row budget, not push
+// the selected row out of the pane.
+func TestRenderSkillList_LongFilterDoesNotHideCursor(t *testing.T) {
+	for _, filter := range []string{"s", strings.Repeat("s", 40), strings.Repeat("s", 200)} {
+		for _, width := range []int{20, 28, 40} {
+			for _, height := range []int{10, 14, 20} {
+				m := testModel()
+				addTestSkills(&m, 24)
+				m.filtering = true
+				m.filter = filter
+				m.cursor = len(m.filtered) - 1
+
+				pane := m.renderSkillList(width, height)
+				want := "> [ ] " + string(m.filtered[m.cursor].Skill.Name)
+				if !strings.Contains(pane, want) {
+					t.Errorf("filter=%d chars width=%d height=%d: %q missing:\n%s",
+						len(filter), width, height, want, pane)
+				}
+				if got := lipgloss.Height(pane); got > height {
+					t.Errorf("filter=%d chars width=%d: pane height = %d, want <= %d:\n%s",
+						len(filter), width, got, height, pane)
+				}
+			}
+		}
+	}
+}
+
+// TestRenderCompactList_LongNamesRenderOneLine guards the compact path's own
+// one-row-per-skill assumption, which the windowing added above depends on.
+func TestRenderCompactList_LongNamesRenderOneLine(t *testing.T) {
+	m := testModel()
+	m.width = 40
+	addTestSkills(&m, 6)
+	m.cursor = addLongNamedSkill(t, &m, strings.Repeat("z", 64))
+
+	list := m.renderCompactList(8)
+	for _, line := range strings.Split(list, "\n") {
+		if got := lipgloss.Width(line); got > m.width {
+			t.Errorf("compact row is %d cells wide, want <= %d: %q", got, m.width, line)
+		}
+	}
+	if !strings.Contains(list, "…") {
+		t.Errorf("compact list should truncate the long name:\n%s", list)
+	}
+}
+
+// TestImport_RowsStayTwoLines guards importListVisibleItems' budget: it counts
+// each candidate as a summary line plus a source-path line, so neither may wrap.
+func TestImport_RowsStayTwoLines(t *testing.T) {
+	m := testModel()
+	m.screen = screenImport
+	m.imports = []app.ImportCandidateView{{
+		SkillName: domain.SkillName(strings.Repeat("c", 40)),
+		Ready:     true,
+		FromRoots: []domain.Target{domain.TargetClaude, domain.TargetCodex},
+		SourceDir: "/very/long/source/path/that/keeps/going/" + strings.Repeat("d", 40),
+	}}
+
+	for _, width := range []int{24, 30, 40} {
+		pane := m.renderImportListPane(width, 20)
+
+		// Count the candidate's own lines. A wrapped summary or path shows up
+		// here as a third line, which is what breaks the budget's /2 -- widths
+		// alone cannot detect it, since the compositor wraps to the pane.
+		// Slice the footer off by its reserved height rather than matching its
+		// text, whose own wrapped continuations would otherwise be counted.
+		footerHeight := countLines(wrapContent(m.renderImportPaneFooter(), width))
+		lines := strings.Split(pane, "\n")
+		if len(lines) <= footerHeight {
+			t.Fatalf("width=%d: pane has no body:\n%s", width, pane)
+		}
+
+		var rowLines int
+		for _, line := range lines[:len(lines)-footerHeight] {
+			if trimmed := strings.TrimSpace(line); trimmed != "" && trimmed != "Import" {
+				rowLines++
+			}
+		}
+		if rowLines != 2 {
+			t.Errorf("width=%d: candidate rendered %d lines, want exactly 2:\n%s", width, rowLines, pane)
+		}
+		// The path keeps its tail, which is what distinguishes candidates.
+		if !strings.Contains(pane, strings.Repeat("d", 5)) {
+			t.Errorf("width=%d: truncated path should keep its tail:\n%s", width, pane)
+		}
+	}
+}
+
+// TestImport_RowKeepsStatusSuffix covers the information priority within a
+// truncated row: the name is what gets cut, because the targets and status are
+// what the row is read for.
+func TestImport_RowKeepsStatusSuffix(t *testing.T) {
+	m := testModel()
+	m.screen = screenImport
+	m.imports = []app.ImportCandidateView{{
+		SkillName: domain.SkillName(strings.Repeat("c", 60)),
+		Ready:     false,
+		Problem:   "blocked",
+		FromRoots: []domain.Target{domain.TargetClaude},
+		SourceDir: "/tmp/x",
+	}}
+
+	for _, width := range []int{30, 40, 60} {
+		pane := m.renderImportListPane(width, 20)
+		for _, want := range []string{"[claude]", "blocked"} {
+			if !strings.Contains(pane, want) {
+				t.Errorf("width=%d: truncation dropped %q, which the row is read for:\n%s",
+					width, want, pane)
+			}
+		}
+	}
+}
+
+// TestRenderFooter_LongFilterStaysOneLine and its header counterpart guard the
+// chrome View measures with lipgloss.Height, which counts newlines and is blind
+// to wrapping.
+func TestRenderFooter_LongFilterStaysOneLine(t *testing.T) {
+	for _, width := range []int{40, 80, 120} {
+		m := testModel()
+		m.width = width
+		m.filtering = true
+		m.filter = strings.Repeat("f", 300)
+
+		footer := m.renderFooter()
+		if got := lipgloss.Width(footer); got > width {
+			t.Errorf("width=%d: footer is %d cells, want <= %d: %q", width, got, width, footer)
+		}
+		if got := lipgloss.Height(footer); got != 1 {
+			t.Errorf("width=%d: footer height = %d, want 1", width, got)
+		}
+	}
+}
+
+func TestRenderHeader_LongProjectPathStaysOneLine(t *testing.T) {
+	for _, width := range []int{40, 80, 120} {
+		m := testModel()
+		m.width = width
+		m.projectRoot = "/deep/" + strings.Repeat("nested/", 30) + "leaf"
+		m.status = strings.Repeat("s", 80)
+
+		header := m.renderHeader()
+		if got := lipgloss.Width(header); got > width {
+			t.Errorf("width=%d: header is %d cells, want <= %d: %q", width, got, width, header)
+		}
+		if got := lipgloss.Height(header); got != 1 {
+			t.Errorf("width=%d: header height = %d, want 1", width, got)
+		}
+	}
+}
+
+// TestRenderHeader_KeepsStatusVisibleWithLongScope covers the competition for
+// the header line: a deep project path must not silently swallow the status,
+// which is where operation results and errors surface.
+func TestRenderHeader_KeepsStatusVisibleWithLongScope(t *testing.T) {
+	for _, width := range []int{40, 60, 80, 120} {
+		m := testModel()
+		m.width = width
+		m.projectRoot = "/deep/" + strings.Repeat("nested/", 40) + "leaf"
+		m.status = "delete blocked: installed in user scope"
+
+		header := m.renderHeader()
+		if !strings.Contains(header, "delete blocked") {
+			t.Errorf("width=%d: long scope hid the status:\n%q", width, header)
+		}
+		if !strings.Contains(header, "Loadout [") {
+			t.Errorf("width=%d: status starved the scope label:\n%q", width, header)
+		}
+		if got := lipgloss.Width(header); got > width {
+			t.Errorf("width=%d: header is %d cells, want <= %d:\n%q", width, got, width, header)
+		}
+	}
+}
+
+// TestView_FitsTerminalHeight_WithLongChrome ties the two above back to the
+// symptom: unbounded chrome made the whole view overflow the terminal.
+func TestView_FitsTerminalHeight_WithLongChrome(t *testing.T) {
+	for _, tt := range []struct{ width, height int }{{40, 14}, {80, 20}, {120, 40}} {
+		m := testModel()
+		addTestSkills(&m, 30)
+		m.width, m.height = tt.width, tt.height
+		m.projectRoot = "/deep/" + strings.Repeat("nested/", 30) + "leaf"
+		m.filtering = true
+		m.filter = strings.Repeat("f", 300)
+		m.applyFilter()
+
+		assertViewFitsPhysicalHeight(t, m)
+	}
+}
+
+// TestSkillListRows_MatchesCompactRendering keeps ctrl+u/d honest when the body
+// falls back to compact mode, which draws a bare windowed list rather than a
+// framed pane with an action panel.
+func TestSkillListRows_MatchesCompactRendering(t *testing.T) {
+	for height := 8; height <= 14; height++ {
+		m := testModel()
+		addTestSkills(&m, 40)
+		m.width, m.height = 120, height
+		if !m.usesCompactLayout() {
+			continue
+		}
+
+		want := len(skillRowLines(m.renderCompactList(m.mainBodyHeight())))
+		if got := m.skillListRows(); got != want {
+			t.Errorf("terminal height=%d: skillListRows = %d, but compact draws %d rows",
+				height, got, want)
+		}
+	}
+}
+
+func TestRenderCompactList_KeepsCursorVisible(t *testing.T) {
+	for height := 2; height <= 8; height++ {
+		m := testModel()
+		addTestSkills(&m, 24)
+		m.cursor = len(m.filtered) - 1
+
+		list := clipContent(m.renderCompactList(height), height)
+		want := "> [ ] " + string(m.filtered[m.cursor].Skill.Name)
+		if !strings.Contains(list, want) {
+			t.Errorf("height=%d: compact list should keep %q visible:\n%s", height, want, list)
+		}
+	}
+}
+
+func TestView_FitsTerminalHeight_WithLongSkillNames(t *testing.T) {
+	for _, tt := range []struct{ width, height int }{{100, 40}, {80, 14}} {
+		m := testModel()
+		addTestSkills(&m, 30)
+		m.cursor = addLongNamedSkill(t, &m, strings.Repeat("y", 44))
+		m.width, m.height = tt.width, tt.height
+
+		assertViewFitsHeight(t, m)
+	}
+}
+
 func TestRenderSkillList_SeparatesAndHighlightsDeleteAction(t *testing.T) {
 	m := testModel()
 
@@ -549,7 +954,7 @@ func TestRenderSkillList_SeparatesAndHighlightsDeleteAction(t *testing.T) {
 	}
 
 	bulkIdx := strings.Index(list, "a equip all (user)")
-	separatorIdx := strings.LastIndex(list, "────────────")
+	separatorIdx := strings.LastIndex(list, strings.Repeat("─", paneFooterGroupRuleWidth))
 	deleteIdx := strings.Index(list, "D delete repo copy")
 	if bulkIdx == -1 || separatorIdx == -1 || deleteIdx == -1 || !(bulkIdx < separatorIdx && separatorIdx < deleteIdx) {
 		t.Fatalf("skill list should separate delete action from standard actions:\n%s", list)
@@ -1256,7 +1661,7 @@ func TestImport_CtrlDPagesCandidates(t *testing.T) {
 	m.screen = screenImport
 	m.imports = importCandidates(20)
 
-	step := pageStep(m.importListVisibleItems(m.importContentHeight()))
+	step := pageStep(m.importListRows())
 	m2, _ := m.Update(ctrlKey(tea.KeyCtrlD))
 	model := m2.(Model)
 
@@ -1272,7 +1677,7 @@ func TestImport_BrowseCtrlDPagesDirectories(t *testing.T) {
 	m.browseDir = testHome
 	m.browseDirEntries = browseEntries(20)
 
-	step := pageStep(m.importListVisibleItems(m.importContentHeight()))
+	step := pageStep(m.importListRows())
 	m2, _ := m.Update(ctrlKey(tea.KeyCtrlD))
 	model := m2.(Model)
 
@@ -3065,6 +3470,29 @@ func TestImport_PaneFooterRowCount(t *testing.T) {
 	}
 }
 
+// TestImport_FooterSurvivesWrappingAtNarrowWidth pins the import pane to the
+// same rule as the skill list: the footer's reserved height is measured wrapped,
+// so its last rows are not clipped away in a narrow pane.
+func TestImport_FooterSurvivesWrappingAtNarrowWidth(t *testing.T) {
+	m := testModel()
+	m.screen = screenImport
+	m.width = 28
+	m.imports = importCandidates(20)
+
+	width := m.importListContentWidth()
+	footer := m.renderImportPaneFooter()
+	if countLines(footer) == countLines(wrapContent(footer, width)) {
+		t.Fatalf("precondition: footer should wrap at width %d:\n%s", width, footer)
+	}
+
+	pane := m.renderImportListPane(width, 20)
+	for _, want := range []string{"browse", "auto-commit"} {
+		if !strings.Contains(pane, want) {
+			t.Errorf("narrow import pane dropped %q from its action rows:\n%s", want, pane)
+		}
+	}
+}
+
 func TestImport_ShortHeight(t *testing.T) {
 	m := testModel()
 	m.screen = screenImport
@@ -3643,6 +4071,29 @@ func assertViewFitsHeight(t *testing.T, m Model) {
 	view := m.View()
 	if h := lipgloss.Height(view); h > m.height {
 		t.Fatalf("view height = %d, want <= %d\nview:\n%s", h, m.height, view)
+	}
+}
+
+// assertViewFitsPhysicalHeight counts the rows the view actually occupies in a
+// terminal m.width wide. lipgloss.Height counts newlines only, so it cannot see
+// an over-wide line wrapping into extra rows -- which is how unbounded header
+// and footer content overflowed the terminal unnoticed.
+func assertViewFitsPhysicalHeight(t *testing.T, m Model) {
+	t.Helper()
+
+	view := m.View()
+	rows := 0
+	for _, line := range strings.Split(view, "\n") {
+		width := lipgloss.Width(line)
+		if width <= m.width {
+			rows++
+			continue
+		}
+		rows += (width + m.width - 1) / m.width
+	}
+	if rows > m.height {
+		t.Fatalf("view occupies %d physical rows at width %d, want <= %d\nview:\n%s",
+			rows, m.width, m.height, view)
 	}
 }
 

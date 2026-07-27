@@ -10,7 +10,6 @@ const (
 	compactWidthThreshold = 60
 	importSplitWidth      = 90
 
-	skillListBaseHeaderLines  = 3
 	importBrowseHeaderLines   = 2
 	importListBaseHeaderLines = 2
 	settingsPreambleLines     = 5
@@ -37,12 +36,80 @@ func (m Model) skillListContentHeight() int {
 	return contentHeightForPane(bodyHeight, border)
 }
 
-func (m Model) skillListVisibleItems(height int) int {
-	headerLines := skillListBaseHeaderLines
+// skillListHeader returns the lines above the skill rows: the pane title, the
+// filter echo while filtering, and the blank separator as the empty final line.
+// renderSkillList and the budget below share it so the reserved header height is
+// the height actually rendered.
+func (m Model) skillListHeader(width int) string {
+	lines := []string{paneHeaderStyle.Render("Skills Inventory")}
 	if m.filtering || m.filter != "" {
-		headerLines++
+		// The filter is unbounded user input. Keep the echo to a single line,
+		// showing the tail so the characters just typed stay visible; wrapping it
+		// would eat the rows the budget below reserves.
+		echo := truncateCellsLeft(m.filter, max(1, width-filterEchoLabelWidth))
+		lines = append(lines, dimStyle.Render("Filter: ")+echo)
 	}
-	return max(1, height-headerLines-countLines(m.renderPaneFooterActions(m.inProjectMode())))
+	lines = append(lines, "")
+	return strings.Join(lines, "\n")
+}
+
+// filterEchoLabelWidth is the display width of the "Filter: " label.
+const filterEchoLabelWidth = 8
+
+// skillListHeaderLines measures the rendered header rather than assuming a line
+// count, so the reserved height always matches what renderSkillList draws.
+func (m Model) skillListHeaderLines(width int) int {
+	return countLines(wrapContent(m.skillListHeader(width), width))
+}
+
+// skillListPaneBudget splits a pane's content height into the number of skill
+// rows to draw and the lines reserved for the action panel. The renderer and the
+// paging math both consume this, so the two cannot drift apart: everything is
+// counted in rendered lines, and the footer is measured wrapped to pane width.
+//
+// The list has priority. When the pane is too short for both, the action panel
+// yields lines rather than squeezing the list out entirely.
+func (m Model) skillListPaneBudget(width, height int) (rows, footerHeight int) {
+	footerHeight = countLines(wrapContent(m.renderPaneFooterActions(width, m.inProjectMode()), width))
+	headerLines := m.skillListHeaderLines(width)
+	if height-headerLines-footerHeight < 1 {
+		footerHeight = max(0, height-headerLines-1)
+	}
+	return max(1, height-headerLines-footerHeight), footerHeight
+}
+
+// usesCompactLayout reports whether View's body falls back to renderCompact,
+// which draws a bare windowed list with no pane frame or action panel. It
+// mirrors the height checks at the top of renderWide and renderNarrow.
+func (m Model) usesCompactLayout() bool {
+	bodyHeight := m.mainBodyHeight()
+	frameHeight := paneFrameHeight(borderStyle)
+	if m.width < compactWidthThreshold {
+		return bodyHeight <= (frameHeight*2)+1+2
+	}
+	return bodyHeight <= frameHeight+compactBodyThreshold
+}
+
+// skillListRows is how many skill rows the current layout can draw, for callers
+// that page the cursor rather than render. Compact mode has no pane frame or
+// action panel, so budgeting it like a framed pane would shrink the page step to
+// a single item.
+func (m Model) skillListRows() int {
+	if m.usesCompactLayout() {
+		return max(1, m.mainBodyHeight()-1) // one line for the title
+	}
+	rows, _ := m.skillListPaneBudget(m.skillListContentWidth(), m.skillListContentHeight())
+	return rows
+}
+
+// skillListContentWidth is the wrap width of the skill list pane, matching the
+// active layout the way detailContentWidth does for the details pane.
+func (m Model) skillListContentWidth() int {
+	if m.width < compactWidthThreshold {
+		return max(1, m.width-4)
+	}
+	leftW, _, _ := m.wideColumnWidths()
+	return leftW
 }
 
 func (m Model) detailContentHeight() int {
@@ -168,8 +235,28 @@ func (m *Model) clampScrollOffsets() {
 	m.helpScroll = min(max(0, m.helpScroll), m.maxHelpScroll())
 }
 
-func (m Model) importListVisibleItems(height int) int {
-	bodyHeight := max(1, height-countLines(m.renderImportPaneFooter()))
+// importListContentWidth is the wrap width of the import list pane, matching
+// renderImport's stacked vs side-by-side branch.
+func (m Model) importListContentWidth() int {
+	w := max(1, m.width-4)
+	if w < importSplitWidth {
+		return w
+	}
+	leftW, _ := m.importPaneWidths()
+	return leftW
+}
+
+// importListRows is how many import rows the current layout can draw, for
+// callers that page the cursor rather than render.
+func (m Model) importListRows() int {
+	return m.importListVisibleItems(m.importListContentWidth(), m.importContentHeight())
+}
+
+func (m Model) importListVisibleItems(width, height int) int {
+	// Measure the footer wrapped, the way renderListPaneWithFooter reserves it:
+	// the import actions wrap in a narrow pane, and an unwrapped count would
+	// hand the body more lines than it actually gets.
+	bodyHeight := max(1, height-countLines(wrapContent(m.renderImportPaneFooter(), width)))
 	if m.importBrowsing {
 		return max(1, bodyHeight-importBrowseHeaderLines)
 	}

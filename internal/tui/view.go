@@ -66,6 +66,17 @@ func (m Model) View() string {
 	return view
 }
 
+const (
+	// headerChromeWidth is the fixed cost around the scope label: "Loadout []"
+	// plus the header style's one cell of padding on each side.
+	headerChromeWidth = len("Loadout []") + 2
+	// headerStatusPadding is statusBarStyle's one cell on each side.
+	headerStatusPadding = 2
+	// headerMinScopeWidth is how much of the scope label survives a long status
+	// message, so the two cannot starve each other.
+	headerMinScopeWidth = 8
+)
+
 func (m Model) renderHeader() string {
 	scopeLabel := "user scope"
 	if m.inProjectMode() {
@@ -76,16 +87,46 @@ func (m Model) renderHeader() string {
 	} else if m.inImportScreen() {
 		scopeLabel += " > import"
 	}
-	title := headerStyle.Render("Loadout [" + scopeLabel + "]")
-	statusText := ""
+
+	// Budget the line before rendering either side. The status carries operation
+	// results and errors, so it gets reserved space rather than being whatever
+	// the scope label leaves over -- but it may not squeeze the scope out
+	// entirely either. Truncating afterwards would just drop the status silently.
+	statusText, statusWidth := "", 0
 	if m.status != "" {
-		statusText = statusBarStyle.Render(m.status)
+		budget := m.width - headerChromeWidth - headerMinScopeWidth - 1 // 1 for the gap
+		if budget > headerStatusPadding {
+			statusText = statusBarStyle.Render(truncateCells(m.status, budget-headerStatusPadding))
+			statusWidth = lipgloss.Width(statusText)
+		}
 	}
-	gap := m.width - lipgloss.Width(title) - lipgloss.Width(statusText)
+
+	scopeBudget := m.width - headerChromeWidth - statusWidth
+	if statusWidth > 0 {
+		scopeBudget--
+	}
+	if scopeBudget > 0 {
+		// Cut from the left so the project's own directory stays readable.
+		scopeLabel = truncateCellsLeft(scopeLabel, scopeBudget)
+	}
+
+	title := headerStyle.Render("Loadout [" + scopeLabel + "]")
+	gap := m.width - lipgloss.Width(title) - statusWidth
 	if gap < 0 {
 		gap = 0
 	}
-	return title + strings.Repeat(" ", gap) + statusText
+	return clampToWidth(title+strings.Repeat(" ", gap)+statusText, m.width)
+}
+
+// clampToWidth truncates each line to width cells, leaving ANSI sequences
+// intact. The header and footer are measured with lipgloss.Height, which is
+// blind to wrapping, so anything unbounded rendered into them has to be cut here
+// or the composed view overflows the terminal.
+func clampToWidth(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	return lipgloss.NewStyle().MaxWidth(width).Render(s)
 }
 
 func shortenHomePath(path string) string {
@@ -105,7 +146,13 @@ func shortenHomePath(path string) string {
 	return path
 }
 
+// renderFooter clamps to one line: View measures it with lipgloss.Height, so a
+// wrapped footer would make the body budget exceed the terminal height.
 func (m Model) renderFooter() string {
+	return clampToWidth(m.footerContent(), m.width)
+}
+
+func (m Model) footerContent() string {
 	if m.configModalActive() {
 		keys := []struct{ key, label string }{
 			{"any key", "close"},
@@ -124,7 +171,9 @@ func (m Model) renderFooter() string {
 	}
 
 	if m.filtering {
-		return filterPromptStyle.Render("Filter: ") + m.filter + "█"
+		// Show the tail, so the characters just typed stay visible.
+		echo := truncateCellsLeft(m.filter, max(1, m.width-filterEchoLabelWidth-1))
+		return filterPromptStyle.Render("Filter: ") + echo + "█"
 	}
 
 	if m.commitPromptActive() {
@@ -480,18 +529,15 @@ func (m Model) renderSkillList(width, height int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(paneHeaderStyle.Render("Skills Inventory"))
+	b.WriteString(m.skillListHeader(width))
 	b.WriteString("\n")
 
-	if m.filtering || m.filter != "" {
-		b.WriteString(dimStyle.Render("Filter: ") + m.filter)
-		b.WriteString("\n")
-	}
-	b.WriteString("\n")
+	footer := m.renderPaneFooterActions(width, m.inProjectMode())
+	rows, footerHeight := m.skillListPaneBudget(width, height)
 
 	if m.loading {
 		b.WriteString(dimStyle.Render("Loading..."))
-		return m.renderListPaneWithFooter(b.String(), m.renderPaneFooterActions(m.inProjectMode()), width, height)
+		return renderPaneWithPinnedFooter(b.String(), footer, width, height, footerHeight)
 	}
 
 	if len(m.filtered) == 0 {
@@ -499,12 +545,9 @@ func (m Model) renderSkillList(width, height int) string {
 		return clipWrappedContent(b.String(), width, height)
 	}
 
-	start, end := windowRange(len(m.filtered), m.skillListVisibleItems(height), m.cursor)
+	start, end := windowRange(len(m.filtered), rows, m.cursor)
 	for i := start; i < end; i++ {
 		v := m.filtered[i]
-		if b.Len() > height*width {
-			break
-		}
 
 		cursor := "  "
 		if i == m.cursor {
@@ -516,7 +559,11 @@ func (m Model) renderSkillList(width, height int) string {
 			checkbox = checkboxFor(v)
 		}
 
-		line := cursor + checkbox + " " + string(v.Skill.Name)
+		// Truncate before styling: the checkbox already carries escape
+		// sequences, and one skill must stay one line or the row budget above
+		// would under-count the space the list actually needs.
+		name := truncateCells(string(v.Skill.Name), width-skillRowPrefixWidth)
+		line := cursor + checkbox + " " + name
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render(line))
 		} else {
@@ -525,7 +572,68 @@ func (m Model) renderSkillList(width, height int) string {
 		b.WriteString("\n")
 	}
 
-	return m.renderListPaneWithFooter(b.String(), m.renderPaneFooterActions(m.inProjectMode()), width, height)
+	return renderPaneWithPinnedFooter(b.String(), footer, width, height, footerHeight)
+}
+
+// skillRowPrefixWidth is the fixed cost of a skill row before its name: two
+// cells of cursor, three of checkbox, one separating space.
+const skillRowPrefixWidth = 6
+
+// truncateCells shortens s to width display cells, marking the cut with a
+// trailing ellipsis. Every list row that a height budget counts as one line must
+// pass through here (or truncateCellsLeft), or the row wraps and the budget
+// under-counts the space the list needs.
+//
+// Measured in cells rather than bytes so wide glyphs cannot overflow the pane.
+func truncateCells(s string, width int) string {
+	if width < 1 {
+		return ""
+	}
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	if width == 1 {
+		return "…"
+	}
+
+	var b strings.Builder
+	used := 0
+	for _, r := range s {
+		w := lipgloss.Width(string(r))
+		if used+w > width-1 {
+			break
+		}
+		b.WriteRune(r)
+		used += w
+	}
+	return b.String() + "…"
+}
+
+// truncateCellsLeft is truncateCells cutting from the left instead, keeping the
+// tail visible. Used where the end carries the meaning: a path's leaf, or the
+// characters a filter was most recently typing.
+func truncateCellsLeft(s string, width int) string {
+	if width < 1 {
+		return ""
+	}
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	if width == 1 {
+		return "…"
+	}
+
+	runes := []rune(s)
+	used, i := 0, len(runes)
+	for i > 0 {
+		w := lipgloss.Width(string(runes[i-1]))
+		if used+w > width-1 {
+			break
+		}
+		used += w
+		i--
+	}
+	return "…" + string(runes[i:])
 }
 
 func checkboxFor(v app.SkillView) string {
@@ -1027,7 +1135,7 @@ func (m Model) renderCompact(height int) string {
 	}
 
 	var sections []string
-	sections = append(sections, clipContent(m.renderCompactList(), height))
+	sections = append(sections, clipContent(m.renderCompactList(height), height))
 	if height > 2 {
 		remaining := height - lipgloss.Height(sections[0]) - 1
 		if remaining > 0 {
@@ -1037,7 +1145,7 @@ func (m Model) renderCompact(height int) string {
 	return clipContent(strings.Join(sections, "\n"), height)
 }
 
-func (m Model) renderCompactList() string {
+func (m Model) renderCompactList(height int) string {
 	var b strings.Builder
 	b.WriteString(paneHeaderStyle.Render("Skills Inventory"))
 	b.WriteString("\n")
@@ -1045,7 +1153,12 @@ func (m Model) renderCompactList() string {
 		b.WriteString(dimStyle.Render("No skills found"))
 		return b.String()
 	}
-	for i, skill := range m.filtered {
+
+	// Window to the space available under the title, so the caller's clip never
+	// has to drop the selected row.
+	start, end := windowRange(len(m.filtered), max(1, height-1), m.cursor)
+	for i := start; i < end; i++ {
+		skill := m.filtered[i]
 		prefix := "  "
 		if i == m.cursor {
 			prefix = "> "
@@ -1054,7 +1167,8 @@ func (m Model) renderCompactList() string {
 		if m.inProjectMode() {
 			check = checkboxFor(skill)
 		}
-		b.WriteString(prefix + check + " " + string(skill.Skill.Name) + "\n")
+		name := truncateCells(string(skill.Skill.Name), m.width-skillRowPrefixWidth)
+		b.WriteString(prefix + check + " " + name + "\n")
 	}
 	return b.String()
 }
@@ -1122,22 +1236,31 @@ func targetActionLabel(installed bool, label string) string {
 }
 
 func (m Model) renderListPaneWithFooter(content, footer string, width, height int) string {
+	if footer == "" {
+		if height <= 0 {
+			return ""
+		}
+		return clipWrappedContent(strings.TrimRight(content, "\n"), width, height)
+	}
+	footerHeight := min(countLines(wrapContent(footer, width)), max(0, height-1))
+	return renderPaneWithPinnedFooter(content, footer, width, height, footerHeight)
+}
+
+// renderPaneWithPinnedFooter lays a body out above a footer pinned to the pane's
+// bottom edge, padding the body so the two together occupy exactly height lines.
+// The footer therefore holds a fixed position instead of drifting up to hug the
+// last body row, and the caller's reserved footerHeight is the height actually
+// used — so a row budget computed against it cannot be silently overrun.
+func renderPaneWithPinnedFooter(content, footer string, width, height, footerHeight int) string {
 	if height <= 0 {
 		return ""
 	}
 	content = strings.TrimRight(content, "\n")
-	if footer == "" {
-		return clipWrappedContent(content, width, height)
-	}
-	footerLines := strings.Count(footer, "\n") + 1
-	footerHeight := min(footerLines, height)
+	footerHeight = min(max(0, footerHeight), height)
 	bodyHeight := height - footerHeight
-	if bodyHeight < 1 {
-		bodyHeight = 1
-		footerHeight = max(0, height-1)
-	}
 
-	body := clipWrappedContent(content, width, bodyHeight)
+	// clipContent strips trailing blank lines, so pad after clipping.
+	body := padToHeight(clipWrappedContent(content, width, bodyHeight), bodyHeight)
 	if footerHeight == 0 {
 		return body
 	}
@@ -1148,11 +1271,28 @@ func (m Model) renderListPaneWithFooter(content, footer string, width, height in
 	return body + "\n" + footerRendered
 }
 
-func (m Model) renderPaneFooterActions(project bool) string {
+// padToHeight appends blank lines until content occupies exactly height lines.
+func padToHeight(content string, height int) string {
+	if height <= 0 {
+		return ""
+	}
+	lines := countLines(content)
+	if lines >= height {
+		return content
+	}
+	return content + strings.Repeat("\n", height-lines)
+}
+
+// paneFooterGroupRuleWidth is the short rule that groups the destructive action
+// apart from the rest. The list/actions boundary above spans the whole column
+// instead, so it reads as a structural divider rather than a floating fragment.
+const paneFooterGroupRuleWidth = 12
+
+func (m Model) renderPaneFooterActions(width int, project bool) string {
 	rows := m.currentSkillTargetRows()
 
 	var b strings.Builder
-	b.WriteString(dimStyle.Render(strings.Repeat("─", 12)) + "\n")
+	b.WriteString(dimStyle.Render(strings.Repeat("─", max(1, width))) + "\n")
 	lines := m.paneFooterActionLines(rows, project)
 	if len(lines) == 0 {
 		b.WriteString(paneFooterStyle.Render("no actions"))
@@ -1181,7 +1321,7 @@ func (m Model) paneFooterActionLines(rows []targetRow, project bool) []string {
 	}
 	bulkLabel, bulkEnabled := m.bulkActionState(project)
 	lines = append(lines, m.bulkActionLine(supportedCount > 1 && bulkEnabled, bulkLabel))
-	lines = append(lines, dimStyle.Render(strings.Repeat("─", 12)))
+	lines = append(lines, dimStyle.Render(strings.Repeat("─", paneFooterGroupRuleWidth)))
 	lines = append(lines, m.deleteActionLine())
 	return lines
 }
@@ -1359,7 +1499,7 @@ func (m Model) renderImportListPane(width, height int) string {
 			return m.renderListPaneWithFooter(b.String(), m.renderImportPaneFooter(), width, height)
 		}
 
-		start, end := windowRange(len(m.browseDirEntries)+1, m.importListVisibleItems(height), m.browseCursor)
+		start, end := windowRange(len(m.browseDirEntries)+1, m.importListVisibleItems(width, height), m.browseCursor)
 		if start == 0 {
 			parentLine := "  ../"
 			if m.browseCursor == 0 {
@@ -1376,7 +1516,7 @@ func (m Model) renderImportListPane(width, height int) string {
 			if i+1 == m.browseCursor {
 				cursor = "> "
 			}
-			line := cursor + name + string(filepath.Separator)
+			line := truncateCells(cursor+name+string(filepath.Separator), width)
 			if i+1 == m.browseCursor {
 				b.WriteString(selectedStyle.Render(line) + "\n")
 			} else {
@@ -1387,7 +1527,9 @@ func (m Model) renderImportListPane(width, height int) string {
 	}
 
 	if m.importCustomDir != "" {
-		b.WriteString("\n" + dimStyle.Render("Scanned: "+m.importCustomDir) + "\n")
+		// Counted as one header line by importListVisibleItems, so keep it to one.
+		scanned := "Scanned: " + truncateCellsLeft(m.importCustomDir, max(1, width-9))
+		b.WriteString("\n" + dimStyle.Render(scanned) + "\n")
 	}
 	b.WriteString("\n")
 
@@ -1404,7 +1546,7 @@ func (m Model) renderImportListPane(width, height int) string {
 		return m.renderListPaneWithFooter(b.String(), m.renderImportPaneFooter(), width, height)
 	}
 
-	start, end := windowRange(len(m.imports), m.importListVisibleItems(height), m.cursor)
+	start, end := windowRange(len(m.imports), m.importListVisibleItems(width, height), m.cursor)
 	for i := start; i < end; i++ {
 		candidate := m.imports[i]
 		cursor := "  "
@@ -1417,13 +1559,22 @@ func (m Model) renderImportListPane(width, height int) string {
 		} else if !candidate.Ready {
 			status = candidate.Problem
 		}
-		line := fmt.Sprintf("%s%s [%s] %s", cursor, candidate.SkillName, formatTargets(candidate.FromRoots), status)
+		// Each candidate must stay exactly two lines: importListVisibleItems
+		// budgets them that way, so a wrapped summary or path would clip the
+		// window's last row. Spend the truncation on the name and keep the
+		// targets and status, which are what the row is read for.
+		suffix := fmt.Sprintf(" [%s] %s", formatTargets(candidate.FromRoots), status)
+		name := truncateCells(
+			string(candidate.SkillName),
+			width-lipgloss.Width(cursor)-lipgloss.Width(suffix),
+		)
+		line := truncateCells(cursor+name+suffix, width)
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render(line) + "\n")
 		} else {
 			b.WriteString(normalStyle.Render(line) + "\n")
 		}
-		b.WriteString(dimStyle.Render("    "+candidate.SourceDir) + "\n")
+		b.WriteString(dimStyle.Render("    "+truncateCellsLeft(candidate.SourceDir, width-4)) + "\n")
 	}
 
 	return m.renderListPaneWithFooter(b.String(), m.renderImportPaneFooter(), width, height)

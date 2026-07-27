@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.1] - 2026-07-26
+
+### Changes
+
+- The equip/unequip/delete action panel is now pinned to the bottom of the inventory column instead of floating directly beneath the last visible skill, so the action keys hold a fixed position as the list scrolls and filters. A full-width rule joins it to the list above
+
+### Bug Fixes
+
+- Skills at the end of the inventory no longer go missing: the list stopped drawing partway down the pane, hiding the last skills and, when the selection sat among them, the cursor as well
+- Short terminal windows no longer render an inventory with zero skill rows; the action panel now gives up space to the list rather than the other way around
+- Long skill names, import candidate names, source paths, and browse entries are truncated to fit their pane instead of wrapping and pushing rows out of view. Paths and directory names are cut from the left so the part that identifies them stays readable
+- Truncated import rows keep their `[targets]` and ready/problem status, which previously disappeared first
+- A long filter no longer wraps across the inventory pane or the footer; the filter echo now shows its tail so the characters just typed stay visible
+- A deep project path no longer wraps the header and pushes the layout past the bottom of the terminal
+- A deep project path no longer hides the status message; the header now reserves room for it, so operation results and errors stay visible
+- `ctrl+u` and `ctrl+d` now page by what is actually on screen in the compact layout used by very short windows, instead of stepping a single skill at a time
+
 ## [0.5.0] - 2026-06-14
 
 ### Features

@@ -15,22 +15,30 @@ builds:
       - arm64
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     files:
       - README.md
       - LICENSE
       - CHANGELOG.md
 
-brews:
+homebrew_casks:
   - repository:
       owner: sethdeckard
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/sethdeckard/loadout
     description: Skill manager for Claude and Codex
-    license: MIT
-    install: |
-      bin.install "loadout"
+    directory: Casks
+    binaries:
+      - loadout
+    # The macOS binaries are unsigned and un-notarized. Remove this hook
+    # if Developer ID signing and notarization are introduced.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/loadout"]
+          end
 
 changelog:
   use: github-native

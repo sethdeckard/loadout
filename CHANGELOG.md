@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2] - 2026-07-31
+
+### Changes
+
+- Homebrew installs now use a cask instead of a formula. `brew install sethdeckard/tap/loadout` and `brew upgrade` work as before, and both macOS and Linuxbrew remain supported. Existing formula installs migrate automatically once the tap records the migration
+- The macOS binaries are neither Developer ID signed nor notarized, so the cask clears the `com.apple.quarantine` attribute after install. This gives up Gatekeeper verification of the downloaded archive and will go away if signing and notarization are introduced
+
 ## [0.5.1] - 2026-07-26
 
 ### Changes
